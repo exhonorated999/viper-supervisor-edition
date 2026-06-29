@@ -1,0 +1,32 @@
+[
+  {
+    "content": "[H-1] Shared crypto v2 in all 3 impls: ECDSA/ECDH P-256 + HKDF + RFC7638 thumbprint + deviceId + AES-GCM session",
+    "id": "1",
+    "status": "completed"
+  },
+  {
+    "content": "[H-2] Interop test for crypto v2 (node mjs <-> VIPER cjs <-> Web Crypto): 11/11 pass",
+    "id": "2",
+    "status": "completed"
+  },
+  {
+    "content": "[H-3] LAN node: static node key + trust store (TOFU/revoke) + v2 handshake (verify sig, ECDH, node proof) + trust RPCs",
+    "id": "3",
+    "status": "completed"
+  },
+  {
+    "content": "[H-4] Supervisor client + VIPER main: device key persist, v2 handshake, node URL + node-key pin (TOFU + reset)",
+    "id": "4",
+    "status": "completed"
+  },
+  {
+    "content": "[H-5] UIs: Supervisor Settings Secure Link (device id, node pin, URL, Trusted Devices + revoke); VIPER push-dialog link info/config",
+    "id": "5",
+    "status": "completed"
+  },
+  {
+    "content": "[H-6] E2E test 13/13 (TOFU, revoke, BAD_DEVICE_ID, BAD_SIGNATURE) + tsc/vite clean + VIPER syntax clean",
+    "id": "6",
+    "status": "completed"
+  }
+]

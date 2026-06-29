@@ -1,37 +1,51 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { dataService } from "./data/service";
 import type { SupervisorIdentity } from "./data/identity";
+import type { TrustedDevice } from "./data/service";
 
-// Settings — the registered-user identity for THIS supervisor machine.
-// Investigators see this name/unit in their "Push to Supervisor" picker, and
-// the LAN node addresses deliveries to this machine's deviceId.
+// Settings — registered identity + secure-link administration for this
+// supervisor machine (protocol v2: device key, node pinning, trust store).
 export default function Settings() {
   const [id, setId] = useState<SupervisorIdentity>(() => dataService.getIdentity());
   const [draft, setDraft] = useState<SupervisorIdentity>(id);
   const [saved, setSaved] = useState(false);
 
-  const dirty =
-    draft.name !== id.name || draft.badge !== id.badge || draft.unit !== id.unit;
+  const [deviceId, setDeviceId] = useState<string>("…");
+  const [pin, setPin] = useState<string | null>(dataService.getNodePin());
+  const [urlDraft, setUrlDraft] = useState<string>(dataService.getNodeUrl());
+  const [trusted, setTrusted] = useState<TrustedDevice[]>([]);
 
-  const save = () => {
+  const dirty = draft.name !== id.name || draft.badge !== id.badge || draft.unit !== id.unit;
+
+  useEffect(() => {
+    dataService.getDeviceId().then(setDeviceId).catch(() => setDeviceId("unavailable"));
+    loadTrust();
+    const t = setInterval(() => setPin(dataService.getNodePin()), 1500);
+    return () => clearInterval(t);
+  }, []);
+
+  const loadTrust = () => dataService.getTrustedDevices().then(setTrusted).catch(() => {});
+
+  const saveIdentity = () => {
     const next = dataService.updateIdentity({ ...draft });
     setId(next);
     setSaved(true);
     setTimeout(() => setSaved(false), 2600);
   };
 
+  const myDeviceId = deviceId;
+
   return (
     <>
       <div className="topbar">
         <div>
           <h1 className="page-title">Settings</h1>
-          <div className="page-sub">
-            Registered user &amp; machine identity for LAN delivery.
-          </div>
+          <div className="page-sub">Registered user, machine identity &amp; secure LAN link.</div>
         </div>
       </div>
 
-      <div className="panel" style={{ maxWidth: 680 }}>
+      {/* Registered identity */}
+      <div className="panel" style={{ maxWidth: 720 }}>
         <div className="panel-head">
           <h2 className="panel-title">Registered Supervisor</h2>
           <span className="panel-meta">Visible to investigators on the LAN</span>
@@ -39,69 +53,103 @@ export default function Settings() {
 
         <div className="field">
           <label>Full name</label>
-          <input
-            className="input"
-            value={draft.name}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-            placeholder="e.g. Sgt. Michael Reynolds"
-          />
+          <input className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="e.g. Sgt. Michael Reynolds" />
         </div>
-
         <div className="sign-grid">
           <div className="field">
             <label>Badge / ID</label>
-            <input
-              className="input"
-              value={draft.badge}
-              onChange={(e) => setDraft({ ...draft, badge: e.target.value })}
-              placeholder="#0000"
-            />
+            <input className="input" value={draft.badge} onChange={(e) => setDraft({ ...draft, badge: e.target.value })} placeholder="#0000" />
           </div>
           <div className="field">
             <label>Unit / Command</label>
-            <input
-              className="input"
-              value={draft.unit}
-              onChange={(e) => setDraft({ ...draft, unit: e.target.value })}
-              placeholder="e.g. Major Crimes Unit"
-            />
+            <input className="input" value={draft.unit} onChange={(e) => setDraft({ ...draft, unit: e.target.value })} placeholder="e.g. Major Crimes Unit" />
+          </div>
+        </div>
+        <div className="modal-foot" style={{ paddingRight: 0 }}>
+          {saved && <span style={{ color: "var(--green)", alignSelf: "center", marginRight: "auto" }}>✓ Saved &amp; re-registered on LAN</span>}
+          <button className="btn btn-ghost" onClick={() => setDraft(id)} disabled={!dirty}>Reset</button>
+          <button className="btn btn-primary" onClick={saveIdentity} disabled={!dirty}>Save Identity</button>
+        </div>
+      </div>
+
+      {/* Secure link */}
+      <div className="panel" style={{ maxWidth: 720, marginTop: 16 }}>
+        <div className="panel-head">
+          <h2 className="panel-title">Secure Link</h2>
+          <span className="panel-meta">ECDSA/ECDH P-256 · mutual auth · node-key pinned</span>
+        </div>
+
+        <dl className="kv">
+          <dt>This device ID</dt>
+          <dd className="mono">{myDeviceId}</dd>
+          <dt>Device key</dt>
+          <dd>ECDSA P-256 — private key never leaves this machine</dd>
+        </dl>
+
+        <div className="field" style={{ marginTop: 12 }}>
+          <label>LAN node address</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input className="input" style={{ flex: 1 }} value={urlDraft} onChange={(e) => setUrlDraft(e.target.value)} placeholder="ws://host:7071" />
+            <button className="btn btn-ghost" onClick={() => dataService.setNodeUrl(urlDraft)}>Apply</button>
           </div>
         </div>
 
-        <div className="section-label" style={{ margin: "14px 0 8px" }}>
-          Machine Address
+        <div className="secure-pin">
+          <div>
+            <div className="section-label" style={{ margin: 0 }}>Pinned node key</div>
+            {pin ? (
+              <div className="mono" style={{ color: "var(--green)", marginTop: 4 }}>✓ {pin}</div>
+            ) : (
+              <div style={{ color: "var(--amber)", marginTop: 4, fontSize: 13 }}>Not pinned yet — pins on first secure connect (TOFU).</div>
+            )}
+          </div>
+          <button className="btn btn-ghost" onClick={() => { dataService.resetNodePin(); setPin(null); }} disabled={!pin}>Reset Pin</button>
         </div>
-        <dl className="kv">
-          <dt>Device ID</dt>
-          <dd style={{ fontFamily: "var(--mono, monospace)", letterSpacing: 0.4 }}>
-            {id.deviceId}
-          </dd>
-          <dt>Discovery</dt>
-          <dd>
-            Broadcast on LAN as{" "}
-            <strong style={{ color: "var(--text)" }}>
-              {id.name} — {id.unit}
-            </strong>
-          </dd>
-        </dl>
+      </div>
 
-        <div className="modal-foot" style={{ paddingRight: 0 }}>
-          {saved && (
-            <span style={{ color: "var(--green)", alignSelf: "center", marginRight: "auto" }}>
-              ✓ Saved &amp; re-registered on LAN
-            </span>
-          )}
-          <button
-            className="btn btn-ghost"
-            onClick={() => setDraft(id)}
-            disabled={!dirty}
-          >
-            Reset
-          </button>
-          <button className="btn btn-primary" onClick={save} disabled={!dirty}>
-            Save Identity
-          </button>
+      {/* Trusted devices */}
+      <div className="panel" style={{ maxWidth: 720, marginTop: 16 }}>
+        <div className="panel-head">
+          <h2 className="panel-title">Trusted Devices</h2>
+          <button className="btn btn-ghost" onClick={loadTrust}>Refresh</button>
         </div>
+        {trusted.length === 0 ? (
+          <div className="inbox-empty" style={{ padding: "28px 12px" }}>No devices enrolled yet, or node unreachable.</div>
+        ) : (
+          <div className="digest-wrap">
+            <table className="digest-table">
+              <thead>
+                <tr><th>Device</th><th>Role</th><th>Last seen</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody>
+                {trusted.map((d) => (
+                  <tr key={d.deviceId} style={d.revoked ? { opacity: 0.55 } : undefined}>
+                    <td>
+                      <div style={{ color: "#fff" }}>{d.name} {d.badge}</div>
+                      <div className="mono" style={{ fontSize: 11, color: "var(--text-faint)" }}>
+                        {d.deviceId}{d.deviceId === myDeviceId ? " (this machine)" : ""}
+                      </div>
+                    </td>
+                    <td>{d.role}</td>
+                    <td>{d.lastSeen ? new Date(d.lastSeen).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                    <td>
+                      {d.revoked ? <span className="status-chip s-warn">Revoked</span>
+                        : d.online ? <span className="status-chip s-ok">Online</span>
+                        : <span className="status-chip s-read">Trusted</span>}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {d.revoked ? (
+                        <button className="btn btn-ghost" style={{ padding: "5px 10px" }} onClick={() => dataService.unrevokeDevice(d.deviceId).then(() => setTimeout(loadTrust, 300))}>Restore</button>
+                      ) : d.deviceId !== myDeviceId ? (
+                        <button className="btn btn-ghost" style={{ padding: "5px 10px", color: "var(--red)", borderColor: "var(--red)" }} onClick={() => dataService.revokeDevice(d.deviceId).then(() => setTimeout(loadTrust, 300))}>Revoke</button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </>
   );

@@ -168,9 +168,10 @@ export default function App() {
 const CONN_META: Record<ConnState, { label: string; cls: string; pulse: boolean }> = {
   idle: { label: "Idle", cls: "", pulse: false },
   connecting: { label: "Connecting…", cls: "amber", pulse: true },
-  handshaking: { label: "Handshake (AES-256)…", cls: "amber", pulse: true },
+  handshaking: { label: "Handshake (P-256 mutual auth)…", cls: "amber", pulse: true },
   connected: { label: "Secure · Connected", cls: "good", pulse: true },
   offline: { label: "Offline · Reconnecting", cls: "red", pulse: false },
+  untrusted: { label: "Untrusted · Check Settings", cls: "red", pulse: false },
 };
 
 function LanStatus({
@@ -186,7 +187,7 @@ function LanStatus({
   const dotColor =
     conn === "connected"
       ? "var(--green)"
-      : conn === "offline"
+      : conn === "offline" || conn === "untrusted"
       ? "var(--red)"
       : conn === "idle"
       ? "var(--text-faint)"
@@ -205,7 +206,7 @@ function LanStatus({
           size={14}
           style={{ color: conn === "connected" ? "var(--green)" : "var(--text-dim)" }}
         />
-        <span style={{ color: conn === "connected" ? "var(--green)" : conn === "offline" ? "var(--red)" : "var(--amber)" }}>
+        <span style={{ color: conn === "connected" ? "var(--green)" : conn === "offline" || conn === "untrusted" ? "var(--red)" : "var(--amber)" }}>
           {m.label}
         </span>
       </div>

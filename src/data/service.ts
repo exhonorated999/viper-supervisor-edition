@@ -29,8 +29,22 @@ import {
 import { lanClient } from "../lan/client";
 import { loadIdentity, saveIdentity } from "./identity";
 import type { SupervisorIdentity } from "./identity";
+import { getDeviceKey, getDeviceIdSync } from "../lan/devicekey";
 
 export type { SupervisorIdentity } from "./identity";
+
+/** A trusted device as seen by the LAN node's trust store. */
+export interface TrustedDevice {
+  deviceId: string;
+  role: string;
+  name: string;
+  badge: string;
+  unit: string;
+  firstSeen: string;
+  lastSeen: string;
+  revoked: boolean;
+  online: boolean;
+}
 
 /** A dataset/OPS-plan pushed from an investigator device to this supervisor. */
 export type DeliveryType = "stats" | "caseStatus" | "opsPlan";
@@ -116,6 +130,8 @@ export const dataService = {
     // investigators see the correct name/unit in their push picker.
     const id = loadIdentity();
     lanClient.setIdentity({ role: "supervisor", ...id });
+    // Warm the device key so the deviceId is available to the Settings UI.
+    getDeviceKey().catch(() => {});
     lanClient.connect();
   },
 
@@ -165,6 +181,34 @@ export const dataService = {
     saveIdentity(next);
     lanClient.setIdentity({ role: "supervisor", ...next });
     return next;
+  },
+
+  /** This machine's stable deviceId (key fingerprint). */
+  async getDeviceId(): Promise<string> {
+    return (await getDeviceKey()).deviceId;
+  },
+  getDeviceIdSync(): string | null {
+    return getDeviceIdSync();
+  },
+
+  // --- Secure-link config (node pin + URL) ---------------------------------
+  getNodePin(): string | null { return lanClient.nodePin; },
+  getNodeUrl(): string { return lanClient.nodeUrl; },
+  setNodeUrl(url: string) { lanClient.setNodeUrl(url); },
+  resetNodePin() { lanClient.resetNodePin(); },
+
+  // --- Trust administration (supervisor) -----------------------------------
+  async getTrustedDevices(): Promise<TrustedDevice[]> {
+    try { return await lanClient.request<TrustedDevice[]>("get:trust"); }
+    catch { return []; }
+  },
+  revokeDevice(deviceId: string): Promise<void> {
+    lanClient.action("action:trust:revoke", { deviceId }).catch(() => {});
+    return Promise.resolve();
+  },
+  unrevokeDevice(deviceId: string): Promise<void> {
+    lanClient.action("action:trust:unrevoke", { deviceId }).catch(() => {});
+    return Promise.resolve();
   },
 
   // --- Inbox (incoming deliveries from investigators) ----------------------

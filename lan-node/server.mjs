@@ -18,23 +18,61 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  deriveKey,
   encryptJSON,
   decryptJSON,
   randomHex,
-  PBKDF2_ITERATIONS,
+  generateKeyPair,
+  jwkThumbprint,
+  deviceIdFromJwk,
+  signUtf8,
+  verifyUtf8,
+  deriveSessionKey,
+  nodeProofString,
+  deviceProofString,
+  PROTOCOL_VERSION,
 } from "./crypto.mjs";
 import { buildDataset, liveEventPool } from "./dataset.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = Number(process.env.LAN_PORT) || 7071;
-const PSK = process.env.LAN_PSK || "VIPER-LAN-PSK-2025";
 const SERVER_ID = "VIPER-NODE-01";
 const AUDIT_FILE = path.join(__dirname, "audit.log.jsonl");
+const NODE_KEY_FILE = path.join(__dirname, "node-key.json");
+const TRUST_FILE = path.join(__dirname, "trust-store.json");
 
 const data = buildDataset();
 const audit = [];
+
+// --- Node static identity (for client pinning) -----------------------------
+// Generated once and persisted. Clients pin nodeId (this key's fingerprint)
+// and verify the node's signature on every handshake, defeating rogue nodes.
+let nodeKey = loadNodeKey();
+const NODE_ID = deviceIdFromJwk(nodeKey.publicJwk, "NODE");
+
+function loadNodeKey() {
+  try {
+    if (fs.existsSync(NODE_KEY_FILE)) return JSON.parse(fs.readFileSync(NODE_KEY_FILE, "utf8"));
+  } catch { /* regenerate below */ }
+  const kp = generateKeyPair();
+  try { fs.writeFileSync(NODE_KEY_FILE, JSON.stringify(kp), "utf8"); } catch { /* ephemeral */ }
+  return kp;
+}
+
+// --- Trust store (per-device TOFU + revoke) --------------------------------
+// deviceId -> { pubJwk, role, name, badge, unit, firstSeen, lastSeen, revoked }
+const trust = loadTrust();
+
+function loadTrust() {
+  try {
+    if (fs.existsSync(TRUST_FILE)) return new Map(Object.entries(JSON.parse(fs.readFileSync(TRUST_FILE, "utf8"))));
+  } catch { /* fresh */ }
+  return new Map();
+}
+function saveTrust() {
+  try { fs.writeFileSync(TRUST_FILE, JSON.stringify(Object.fromEntries(trust), null, 2), "utf8"); }
+  catch { /* ignore */ }
+}
 
 // --- Registry + router state (push model) ----------------------------------
 // connections : deviceId -> ws            (every authenticated device)
@@ -50,7 +88,7 @@ let deliverySeq = 1000;
 const READS = new Set([
   "get:stats", "get:cases", "get:workload",
   "get:ops:pending", "get:ops:signed", "get:alerts",
-  "get:unit", "get:audit", "get:deliveries",
+  "get:unit", "get:audit", "get:deliveries", "get:trust",
 ]);
 const ROLE_PERMS = {
   supervisor: {
@@ -58,6 +96,7 @@ const ROLE_PERMS = {
     actions: new Set([
       "action:ops:sign", "action:ops:return", "action:case:assign",
       "action:delivery:ack", "action:delivery:decision",
+      "action:trust:revoke", "action:trust:unrevoke",
     ]),
     // Explicitly forbidden — supervisors are read-only on case content and
     // cannot author OPS plans. Used to demonstrate RBAC enforcement.
@@ -71,7 +110,7 @@ const ROLE_PERMS = {
     actions: new Set(["action:push"]),
     denied: new Set([
       "action:ops:sign", "action:ops:return", "action:case:assign",
-      "get:cases", "get:stats", "get:audit",
+      "get:cases", "get:stats", "get:audit", "get:trust",
     ]),
   },
 };
@@ -115,6 +154,32 @@ function handleRpc(conn, kind, payload) {
 
     // --- Push model: roster / deliveries -----------------------------------
     case "get:roster": return rosterList();
+
+    // --- Trust administration (supervisor) ---------------------------------
+    case "get:trust": {
+      return [...trust.entries()].map(([deviceId, t]) => ({
+        deviceId, role: t.role, name: t.name, badge: t.badge, unit: t.unit,
+        firstSeen: t.firstSeen, lastSeen: t.lastSeen, revoked: !!t.revoked,
+        online: connections.has(deviceId),
+      })).sort((a, b) => (b.lastSeen || "").localeCompare(a.lastSeen || ""));
+    }
+
+    case "action:trust:revoke": {
+      const t = trust.get(payload.deviceId);
+      if (t) { t.revoked = true; saveTrust(); }
+      logAudit({ actor: conn.actor, role: conn.role, action: "TRUST_REVOKE", target: payload.deviceId, result: "OK" });
+      // Kick the device if currently connected.
+      const ws = connections.get(payload.deviceId);
+      if (ws) { try { ws.close(); } catch { /* ignore */ } }
+      return { ok: true };
+    }
+
+    case "action:trust:unrevoke": {
+      const t = trust.get(payload.deviceId);
+      if (t) { t.revoked = false; saveTrust(); }
+      logAudit({ actor: conn.actor, role: conn.role, action: "TRUST_UNREVOKE", target: payload.deviceId, result: "OK" });
+      return { ok: true };
+    }
 
     case "get:deliveries": {
       // Supervisor pulls its own inbox (e.g. on first paint / reconnect).
@@ -326,72 +391,105 @@ const wss = new WebSocketServer({ port: PORT, maxPayload: 64 * 1024 * 1024 });
 
 wss.on("connection", (ws, req) => {
   ws._authed = false;
-  ws._salt = randomHex(16);
-  ws._nonce = randomHex(16);
   const peer = req.socket.remoteAddress;
 
-  // Handshake step 1: server -> client HELLO (plaintext: just salt + nonce)
+  // Per-connection ephemeral ECDH key (forward secrecy) + challenge nonce.
+  ws._eph = generateKeyPair();
+  ws._ephThumb = jwkThumbprint(ws._eph.publicJwk);
+  ws._challenge = randomHex(32);
+
+  // Handshake step 1: server -> client HELLO. Plaintext, but the node signs
+  // its ephemeral key with its STATIC identity key so the client can verify
+  // it is talking to the pinned node (defeats rogue/MITM nodes).
   send(ws, {
     t: "hello",
+    v: PROTOCOL_VERSION,
+    nodeId: NODE_ID,
     serverId: SERVER_ID,
-    salt: ws._salt,
-    nonce: ws._nonce,
-    iterations: PBKDF2_ITERATIONS,
+    nodePubJwk: nodeKey.publicJwk,
+    nodeEphJwk: ws._eph.publicJwk,
+    challenge: ws._challenge,
+    nodeSig: signUtf8(nodeKey.privateJwk, nodeProofString(ws._challenge, ws._ephThumb)),
   });
 
   ws.on("message", (raw) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
 
-    // Handshake step 2: client -> server AUTH (encrypted with PSK-derived key)
+    // Handshake step 2: client -> server AUTH.
+    // { v, role, deviceId, devicePubJwk, clientEphJwk, sig, enc:{iv,data} }
     if (msg.t === "auth") {
-      const key = deriveKey(PSK, Buffer.from(ws._salt, "hex"));
-      let authObj;
+      const failClose = (reason) => {
+        send(ws, { t: "auth-fail", reason });
+        logAudit({ actor: `unknown@${peer}`, role: "?", action: `AUTH:${reason}`, target: NODE_ID, result: "DENIED" });
+        return ws.close();
+      };
+
+      // 1) deviceId must be the fingerprint of the presented public key.
+      let derivedId;
+      try { derivedId = deviceIdFromJwk(msg.devicePubJwk, "DEV"); }
+      catch { return failClose("BAD_DEVICE_KEY"); }
+      if (!msg.deviceId || msg.deviceId !== derivedId) return failClose("BAD_DEVICE_ID");
+
+      // 2) Verify the device's signature over the handshake transcript.
+      const clientEphThumb = jwkThumbprint(msg.clientEphJwk);
+      const proof = deviceProofString(ws._challenge, ws._ephThumb, clientEphThumb, msg.deviceId, msg.role);
+      if (!verifyUtf8(msg.devicePubJwk, proof, msg.sig)) return failClose("BAD_SIGNATURE");
+
+      // 3) Derive the forward-secret session key and decrypt the identity.
+      let key, ident;
       try {
-        authObj = decryptJSON(key, msg.iv, msg.data); // throws on wrong PSK
-      } catch {
-        send(ws, { t: "auth-fail", reason: "BAD_KEY" });
-        logAudit({ actor: `unknown@${peer}`, role: "?", action: "AUTH", target: SERVER_ID, result: "DENIED" });
-        return ws.close();
+        key = deriveSessionKey(ws._eph.privateJwk, msg.clientEphJwk, ws._challenge);
+        ident = decryptJSON(key, msg.enc.iv, msg.enc.data);
+      } catch { return failClose("BAD_SESSION"); }
+      if (ident.nonce !== ws._challenge) return failClose("BAD_NONCE");
+      if (!ROLE_PERMS[msg.role]) return failClose("UNKNOWN_ROLE");
+
+      // 4) Trust: TOFU-register new devices; enforce revocation + key binding.
+      const existing = trust.get(msg.deviceId);
+      if (existing) {
+        if (existing.revoked) return failClose("DEVICE_REVOKED");
+        if (jwkThumbprint(existing.pubJwk) !== jwkThumbprint(msg.devicePubJwk)) return failClose("KEY_MISMATCH");
+        existing.role = msg.role; existing.name = ident.name; existing.badge = ident.badge;
+        existing.unit = ident.unit || existing.unit; existing.lastSeen = new Date().toISOString();
+      } else {
+        trust.set(msg.deviceId, {
+          pubJwk: msg.devicePubJwk, role: msg.role,
+          name: ident.name, badge: ident.badge, unit: ident.unit || data.unit.name,
+          firstSeen: new Date().toISOString(), lastSeen: new Date().toISOString(), revoked: false,
+        });
       }
-      if (authObj.nonce !== ws._nonce) {
-        send(ws, { t: "auth-fail", reason: "BAD_NONCE" });
-        return ws.close();
-      }
-      if (!ROLE_PERMS[authObj.role]) {
-        send(ws, { t: "auth-fail", reason: "UNKNOWN_ROLE" });
-        return ws.close();
-      }
+      saveTrust();
+
       ws._authed = true;
       ws._key = key;
-      ws._role = authObj.role;
-      ws._actor = `${authObj.name} (${authObj.badge})`;
-      // Identity for the registry/router. deviceId uniquely identifies a
-      // machine; supervisors are addressed by it in the push picker.
-      ws._name = authObj.name;
-      ws._badge = authObj.badge;
-      ws._unit = authObj.unit || data.unit.name;
-      ws._deviceId = authObj.deviceId || `${authObj.name}|${authObj.badge}`;
-      ws.role = authObj.role;
+      ws._role = msg.role;
+      ws._name = ident.name;
+      ws._badge = ident.badge;
+      ws._unit = ident.unit || data.unit.name;
+      ws._deviceId = msg.deviceId;
+      ws._actor = `${ident.name} (${ident.badge})`;
+      ws.role = msg.role;
       ws.actor = ws._actor;
-      // Register the connection (drops any stale socket for the same device).
       connections.set(ws._deviceId, ws);
+
       send(ws, {
         t: "auth-ok",
         ...encryptJSON(key, {
           sessionId: randomHex(8),
           serverId: SERVER_ID,
+          nodeId: NODE_ID,
+          deviceId: ws._deviceId,
           unit: data.unit.name,
-          role: authObj.role,
+          role: msg.role,
           permissions: {
-            reads: [...ROLE_PERMS[authObj.role].reads],
-            actions: [...ROLE_PERMS[authObj.role].actions],
-            denied: [...ROLE_PERMS[authObj.role].denied],
+            reads: [...ROLE_PERMS[msg.role].reads],
+            actions: [...ROLE_PERMS[msg.role].actions],
+            denied: [...ROLE_PERMS[msg.role].denied],
           },
         }),
       });
-      logAudit({ actor: ws._actor, role: ws._role, action: "SESSION_OPEN", target: SERVER_ID, result: "OK" });
-      // Supervisor came online: deliver anything queued while it was away.
+      logAudit({ actor: ws._actor, role: ws._role, action: existing ? "SESSION_OPEN" : "DEVICE_ENROLL", target: ws._deviceId, result: "OK" });
       if (ws._role === "supervisor") flushPending(ws._deviceId);
       return;
     }
@@ -437,7 +535,9 @@ console.log(`\n  V.I.P.E.R. LAN Node`);
 console.log(`  ───────────────────────────────`);
 console.log(`  listening   ws://0.0.0.0:${PORT}`);
 console.log(`  server id   ${SERVER_ID}`);
-console.log(`  encryption  AES-256-GCM (PBKDF2 ${PBKDF2_ITERATIONS} / SHA-256)`);
+console.log(`  node id     ${NODE_ID}   (pin this on clients)`);
+console.log(`  security    ECDSA/ECDH P-256 · HKDF · AES-256-GCM (mutual auth, FS)`);
+console.log(`  trust       ${trust.size} device(s) enrolled (TOFU + revoke)`);
 console.log(`  audit log   ${AUDIT_FILE}`);
 console.log(`  live events every 14s\n`);
 
