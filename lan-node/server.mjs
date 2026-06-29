@@ -16,6 +16,8 @@
 import { WebSocketServer } from "ws";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
+import dgram from "node:dgram";
 import { fileURLToPath } from "node:url";
 import {
   encryptJSON,
@@ -533,6 +535,52 @@ wss.on("connection", (ws, req) => {
 // receives real data via investigator pushes (Inbox), not synthetic events.
 // startLiveEvents();
 
+// --- UDP discovery responder ------------------------------------------------
+// Zero-config discovery: investigator machines broadcast a "VIPER_DISCOVER"
+// datagram on the LAN; this node replies with its identity + ws port so the
+// investigator learns ws://<this-host-ip>:<PORT> without any manual config.
+const DISCOVERY_PORT = Number(process.env.LAN_DISCOVERY_PORT) || PORT; // UDP, same number as ws (TCP)
+const DISCOVERY_MAGIC = "VIPER_DISCOVER";
+let discoverySock = null;
+
+function startDiscovery() {
+  const sock = dgram.createSocket({ type: "udp4", reuseAddr: true });
+  sock.on("error", (err) => {
+    console.log(`  discovery   UDP error: ${err.message} (discovery disabled)`);
+    try { sock.close(); } catch { /* ignore */ }
+    discoverySock = null;
+  });
+  sock.on("message", (msg, rinfo) => {
+    const text = msg.toString("utf8");
+    if (!text.startsWith(DISCOVERY_MAGIC)) return;
+    const reply = JSON.stringify({
+      magic: "VIPER_NODE",
+      nodeId: NODE_ID,
+      serverId: SERVER_ID,
+      wsPort: PORT,
+      proto: PROTOCOL_VERSION,
+      name: "V.I.P.E.R. Supervisor Node",
+    });
+    try { sock.send(reply, rinfo.port, rinfo.address); } catch { /* ignore */ }
+  });
+  sock.bind(DISCOVERY_PORT, () => {
+    try { sock.setBroadcast(true); } catch { /* ignore */ }
+    discoverySock = sock;
+  });
+}
+startDiscovery();
+
+function lanAddresses() {
+  const out = [];
+  const ifs = os.networkInterfaces();
+  for (const name of Object.keys(ifs)) {
+    for (const ni of ifs[name] || []) {
+      if (ni.family === "IPv4" && !ni.internal) out.push(ni.address);
+    }
+  }
+  return out;
+}
+
 console.log(`\n  V.I.P.E.R. LAN Node`);
 console.log(`  ───────────────────────────────`);
 console.log(`  listening   ws://0.0.0.0:${PORT}`);
@@ -541,9 +589,18 @@ console.log(`  node id     ${NODE_ID}   (pin this on clients)`);
 console.log(`  security    ECDSA/ECDH P-256 · HKDF · AES-256-GCM (mutual auth, FS)`);
 console.log(`  trust       ${trust.size} device(s) enrolled (TOFU + revoke)`);
 console.log(`  audit log   ${AUDIT_FILE}`);
-console.log(`  data        clean slate — awaiting investigator pushes\n`);
+console.log(`  data        clean slate — awaiting investigator pushes`);
+console.log(`  discovery   udp/${DISCOVERY_PORT} — replies to "${DISCOVERY_MAGIC}" broadcasts`);
+{
+  const ips = lanAddresses();
+  if (ips.length) {
+    console.log(`  reachable   ${ips.map((ip) => `ws://${ip}:${PORT}`).join("  ")}`);
+  }
+  console.log("");
+}
 
 process.on("SIGINT", () => {
   if (liveTimer) clearInterval(liveTimer);
+  try { discoverySock && discoverySock.close(); } catch { /* ignore */ }
   process.exit(0);
 });

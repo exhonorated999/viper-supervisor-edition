@@ -1,0 +1,32 @@
+[
+  {
+    "content": "LAN node: UDP discovery responder (reply to VIPER_DISCOVER with node address)",
+    "id": "1",
+    "status": "completed"
+  },
+  {
+    "content": "Investigator: UDP broadcast scan + auto-pick node; wire into discover IPC",
+    "id": "2",
+    "status": "completed"
+  },
+  {
+    "content": "Investigator UI: auto-discover (blank=scan) + 'Scan network' affordance",
+    "id": "3",
+    "status": "completed"
+  },
+  {
+    "content": "open-firewall.bat: add UDP 7071; attempt elevated firewall add via UAC",
+    "id": "4",
+    "status": "completed"
+  },
+  {
+    "content": "Restart node, syntax/build checks",
+    "id": "5",
+    "status": "completed"
+  },
+  {
+    "content": "Commit both repos; push VIPER update",
+    "id": "6",
+    "status": "in_progress"
+  }
+]
