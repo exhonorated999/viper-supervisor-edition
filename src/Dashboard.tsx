@@ -79,8 +79,9 @@ export default function Dashboard() {
 
   const [selected, setSelected] = useState<MetricKey | null>(null);
   const [modalPlan, setModalPlan] = useState<OpsPlan | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadAll = () => {
     dataService.getStats().then(setStats);
     dataService.getCases().then(setCases);
     dataService.getWorkload().then(setWorkload);
@@ -88,7 +89,38 @@ export default function Dashboard() {
     dataService.getSignedOpsPlans().then(setSigned);
     dataService.getAlerts().then(setAlerts);
     dataService.getSupervisor().then(setSupervisor);
+  };
+
+  useEffect(() => {
+    loadAll();
+    // Re-sync whenever the LAN (re)connects so mock fallback is replaced live.
+    const offState = dataService.lan.onState((s) => {
+      if (s === "connected") loadAll();
+    });
+    // Real-time push events from investigator devices.
+    const offEvent = dataService.lan.onEvent((e) => {
+      if (e.kind === "ops:new") {
+        setPending((p) => [e.payload, ...p.filter((x) => x.id !== e.payload.id)]);
+        setFlash(`New OPS plan received · ${e.payload.id} (${e.payload.risk})`);
+      } else if (e.kind === "case:activity") {
+        setCases((c) => [e.payload, ...c.filter((x) => x.caseNumber !== e.payload.caseNumber)]);
+        setFlash(`Live case activity · ${e.payload.caseNumber} — ${e.payload.lastActivity}`);
+      } else if (e.kind === "alert:new") {
+        setAlerts((a) => [e.payload, ...a]);
+        setFlash(`New alert · ${e.payload.title}`);
+      }
+    });
+    return () => {
+      offState();
+      offEvent();
+    };
   }, []);
+
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(null), 4500);
+    return () => clearTimeout(t);
+  }, [flash]);
 
   const filteredCases = useMemo(() => {
     if (!selected) return cases;
@@ -115,6 +147,7 @@ export default function Dashboard() {
 
   return (
     <>
+      {flash && <div className="live-toast">{flash}</div>}
       {/* ---------- TOP BAR ---------- */}
       <div className="topbar rise">
         <div>
@@ -485,7 +518,15 @@ function AssignCase() {
       setToast("Case number and assigned detective are required.");
       return;
     }
-    setToast(`Case MC-2025-${num} assigned to ${investigator}. Pushed to investigator device.`);
+    const caseNumber = `MC-2025-${num}`;
+    dataService.assignCase({
+      caseNumber,
+      description: desc,
+      detective: investigator,
+      priority,
+      assignedDate: date,
+    });
+    setToast(`Case ${caseNumber} assigned to ${investigator}. Pushed to investigator device over LAN.`);
     setDesc(""); setNum(""); setInvestigator(""); setPriority("");
   };
 

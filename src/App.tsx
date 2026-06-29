@@ -1,5 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Dashboard from "./Dashboard";
+import AuditLog from "./AuditLog";
+import { dataService } from "./data/service";
+import type { ConnState } from "./lan/client";
 import {
   IconDashboard,
   IconCases,
@@ -37,6 +40,19 @@ const NAV: { key: NavKey; icon: JSX.Element }[] = [
 
 export default function App() {
   const [active, setActive] = useState<NavKey | "Audit Log">("Dashboard");
+  const [conn, setConn] = useState<ConnState>("idle");
+  const [lastSync, setLastSync] = useState<number | null>(null);
+  const [queued, setQueued] = useState(0);
+
+  useEffect(() => {
+    dataService.start();
+    const off = dataService.lan.onState((s, info) => {
+      setConn(s);
+      setLastSync(info.lastSync);
+      setQueued(info.queued);
+    });
+    return off;
+  }, []);
 
   return (
     <div className="app">
@@ -74,31 +90,79 @@ export default function App() {
           </button>
         </nav>
 
-        <div className="lan-status">
-          <div className="lan-row">
-            <span className="dot pulse" />
-            <span className="lan-title">LAN Connection</span>
-          </div>
-          <div className="lan-row">
-            <IconCheckShield size={14} style={{ color: "var(--green)" }} />
-            <span className="lan-good">Secure · Connected</span>
-          </div>
-          <div className="lan-row">
-            <span className="lan-sub">Last Sync: 10:32:45 AM</span>
-          </div>
-          <div className="lan-row">
-            <span className="lan-sub">04/22/2025</span>
-          </div>
-        </div>
+        <LanStatus conn={conn} lastSync={lastSync} queued={queued} />
       </aside>
 
       <main className="main">
         {active === "Dashboard" ? (
           <Dashboard />
+        ) : active === "Audit Log" ? (
+          <AuditLog />
         ) : (
           <Placeholder name={active} />
         )}
       </main>
+    </div>
+  );
+}
+
+const CONN_META: Record<ConnState, { label: string; cls: string; pulse: boolean }> = {
+  idle: { label: "Idle", cls: "", pulse: false },
+  connecting: { label: "Connecting…", cls: "amber", pulse: true },
+  handshaking: { label: "Handshake (AES-256)…", cls: "amber", pulse: true },
+  connected: { label: "Secure · Connected", cls: "good", pulse: true },
+  offline: { label: "Offline · Reconnecting", cls: "red", pulse: false },
+};
+
+function LanStatus({
+  conn,
+  lastSync,
+  queued,
+}: {
+  conn: ConnState;
+  lastSync: number | null;
+  queued: number;
+}) {
+  const m = CONN_META[conn];
+  const dotColor =
+    conn === "connected"
+      ? "var(--green)"
+      : conn === "offline"
+      ? "var(--red)"
+      : conn === "idle"
+      ? "var(--text-faint)"
+      : "var(--amber)";
+  return (
+    <div className="lan-status">
+      <div className="lan-row">
+        <span
+          className={`dot${m.pulse ? " pulse" : ""}`}
+          style={{ background: dotColor, boxShadow: `0 0 8px ${dotColor}` }}
+        />
+        <span className="lan-title">LAN Connection</span>
+      </div>
+      <div className="lan-row">
+        <IconCheckShield
+          size={14}
+          style={{ color: conn === "connected" ? "var(--green)" : "var(--text-dim)" }}
+        />
+        <span style={{ color: conn === "connected" ? "var(--green)" : conn === "offline" ? "var(--red)" : "var(--amber)" }}>
+          {m.label}
+        </span>
+      </div>
+      <div className="lan-row">
+        <span className="lan-sub">
+          Last Sync:{" "}
+          {lastSync ? new Date(lastSync).toLocaleTimeString() : "—"}
+        </span>
+      </div>
+      {queued > 0 && (
+        <div className="lan-row">
+          <span className="lan-sub" style={{ color: "var(--amber)" }}>
+            {queued} action{queued > 1 ? "s" : ""} queued (offline)
+          </span>
+        </div>
+      )}
     </div>
   );
 }

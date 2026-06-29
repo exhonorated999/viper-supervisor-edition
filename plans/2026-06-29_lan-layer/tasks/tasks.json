@@ -1,0 +1,32 @@
+[
+  {
+    "content": "[lan-1] Add ws/concurrently deps + run scripts; install",
+    "id": "1",
+    "status": "completed"
+  },
+  {
+    "content": "[lan-2] Node LAN node: encrypted WS handshake, dataset, RBAC, audit, live events",
+    "id": "2",
+    "status": "completed"
+  },
+  {
+    "content": "[lan-3] Browser LAN client: Web Crypto AES-GCM, handshake, RPC, pushes, offline outbox, reconnect",
+    "id": "3",
+    "status": "completed"
+  },
+  {
+    "content": "[lan-4] Rewire dataService to LAN client with cache + mock fallback + connection state",
+    "id": "4",
+    "status": "completed"
+  },
+  {
+    "content": "[lan-5] UI: live LAN status, real-time event updates, queued indicator, Audit Log screen",
+    "id": "5",
+    "status": "completed"
+  },
+  {
+    "content": "[lan-6] Test end-to-end: handshake, encryption, RBAC denial, live event, offline queue/flush",
+    "id": "6",
+    "status": "completed"
+  }
+]
