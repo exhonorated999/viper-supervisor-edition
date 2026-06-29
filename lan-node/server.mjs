@@ -36,19 +36,43 @@ const AUDIT_FILE = path.join(__dirname, "audit.log.jsonl");
 const data = buildDataset();
 const audit = [];
 
+// --- Registry + router state (push model) ----------------------------------
+// connections : deviceId -> ws            (every authenticated device)
+// pendingQueue: deviceId -> [delivery]    (deliveries for a supervisor that
+//                                          was offline; flushed on register)
+// deliveries  : deliveryId -> delivery    (canonical record for decisions)
+const connections = new Map();
+const pendingQueue = new Map();
+const deliveries = new Map();
+let deliverySeq = 1000;
+
 // --- RBAC ------------------------------------------------------------------
 const READS = new Set([
   "get:stats", "get:cases", "get:workload",
   "get:ops:pending", "get:ops:signed", "get:alerts",
-  "get:unit", "get:audit",
+  "get:unit", "get:audit", "get:deliveries",
 ]);
 const ROLE_PERMS = {
   supervisor: {
     reads: READS,
-    actions: new Set(["action:ops:sign", "action:ops:return", "action:case:assign"]),
+    actions: new Set([
+      "action:ops:sign", "action:ops:return", "action:case:assign",
+      "action:delivery:ack", "action:delivery:decision",
+    ]),
     // Explicitly forbidden — supervisors are read-only on case content and
     // cannot author OPS plans. Used to demonstrate RBAC enforcement.
     denied: new Set(["action:case:edit", "action:ops:author"]),
+  },
+  // Investigator nodes (Project V.I.P.E.R.) initiate delivery. They can see
+  // the live supervisor roster and push datasets/OPS plans, but cannot read
+  // or act on supervisor-side case content.
+  investigator: {
+    reads: new Set(["get:unit", "get:roster"]),
+    actions: new Set(["action:push"]),
+    denied: new Set([
+      "action:ops:sign", "action:ops:return", "action:case:assign",
+      "get:cases", "get:stats", "get:audit",
+    ]),
   },
 };
 
@@ -88,6 +112,78 @@ function handleRpc(conn, kind, payload) {
     case "get:alerts": return data.alerts;
     case "get:unit": return data.unit;
     case "get:audit": return audit.slice(0, 100);
+
+    // --- Push model: roster / deliveries -----------------------------------
+    case "get:roster": return rosterList();
+
+    case "get:deliveries": {
+      // Supervisor pulls its own inbox (e.g. on first paint / reconnect).
+      const mine = [...deliveries.values()].filter((d) => d.to === conn.deviceId);
+      return mine.sort((a, b) => b.sentAt.localeCompare(a.sentAt));
+    }
+
+    case "action:push": {
+      // Investigator -> supervisor delivery. Body may be a stats snapshot,
+      // a case-status digest (metadata only), or an OPS plan + PDF.
+      const id = `DLV-${++deliverySeq}`;
+      const delivery = {
+        id,
+        dtype: payload.dtype, // "stats" | "caseStatus" | "opsPlan"
+        from: conn.name,
+        fromBadge: conn.badge,
+        fromDeviceId: conn.deviceId,
+        to: payload.to,
+        manifest: payload.manifest || {},
+        body: payload.body,
+        sentAt: new Date().toISOString(),
+        status: "unread",
+      };
+      deliveries.set(id, delivery);
+      logAudit({
+        actor: conn.actor, role: conn.role,
+        action: `PUSH:${payload.dtype}`, target: payload.to, result: "OK",
+      });
+      const online = sendToDevice(payload.to, "delivery:new", delivery);
+      if (online) return { deliveryId: id, delivered: true };
+      const q = pendingQueue.get(payload.to) || [];
+      q.push(delivery);
+      pendingQueue.set(payload.to, q);
+      return { deliveryId: id, delivered: false, queued: true };
+    }
+
+    case "action:delivery:ack": {
+      const d = deliveries.get(payload.deliveryId);
+      if (d && d.status === "unread") d.status = "read";
+      return { ok: true };
+    }
+
+    case "action:delivery:decision": {
+      // Supervisor approves / returns a delivered OPS plan. Route the
+      // decision back to the originating investigator if still online.
+      const d = deliveries.get(payload.deliveryId);
+      if (d) {
+        d.status = payload.decision; // "approved" | "returned"
+        d.decision = {
+          by: conn.actor, decision: payload.decision,
+          comments: payload.comments || "", at: new Date().toISOString(),
+        };
+      }
+      logAudit({
+        actor: conn.actor, role: conn.role,
+        action: `DELIVERY_${String(payload.decision).toUpperCase()}`,
+        target: payload.deliveryId, result: "OK",
+      });
+      if (d) {
+        sendToDevice(d.fromDeviceId, "delivery:decision", {
+          deliveryId: d.id,
+          decision: payload.decision,
+          comments: payload.comments || "",
+          by: conn.actor,
+          title: d.manifest?.title || d.dtype,
+        });
+      }
+      return { ok: true };
+    }
 
     case "action:ops:sign": {
       const idx = data.opsPending.findIndex((p) => p.id === payload.planId);
@@ -185,12 +281,48 @@ function broadcastEvent(kind, payload) {
   }
 }
 
+// --- Router (push model) ---------------------------------------------------
+// Send a single encrypted event to one device if it is online.
+function sendToDevice(deviceId, kind, payload) {
+  const ws = connections.get(deviceId);
+  if (ws && ws._authed && ws.readyState === 1) {
+    send(ws, { t: "event", ...encryptJSON(ws._key, { kind, payload }) });
+    return true;
+  }
+  return false;
+}
+
+// Online supervisors, as seen by an investigator's "Push to Supervisor" picker.
+function rosterList() {
+  const out = [];
+  for (const ws of connections.values()) {
+    if (ws._authed && ws._role === "supervisor") {
+      out.push({
+        deviceId: ws._deviceId,
+        name: ws._name,
+        badge: ws._badge,
+        unit: ws._unit,
+      });
+    }
+  }
+  return out;
+}
+
+// When a supervisor (re)connects, flush any deliveries that arrived while
+// it was offline (RFP §3.1 offline-tolerant).
+function flushPending(deviceId) {
+  const q = pendingQueue.get(deviceId);
+  if (!q || !q.length) return;
+  pendingQueue.delete(deviceId);
+  for (const delivery of q) sendToDevice(deviceId, "delivery:new", delivery);
+}
+
 // --- Wire protocol ---------------------------------------------------------
 function send(ws, obj) {
   try { ws.send(JSON.stringify(obj)); } catch { /* ignore */ }
 }
 
-const wss = new WebSocketServer({ port: PORT });
+const wss = new WebSocketServer({ port: PORT, maxPayload: 64 * 1024 * 1024 });
 
 wss.on("connection", (ws, req) => {
   ws._authed = false;
@@ -234,8 +366,16 @@ wss.on("connection", (ws, req) => {
       ws._key = key;
       ws._role = authObj.role;
       ws._actor = `${authObj.name} (${authObj.badge})`;
+      // Identity for the registry/router. deviceId uniquely identifies a
+      // machine; supervisors are addressed by it in the push picker.
+      ws._name = authObj.name;
+      ws._badge = authObj.badge;
+      ws._unit = authObj.unit || data.unit.name;
+      ws._deviceId = authObj.deviceId || `${authObj.name}|${authObj.badge}`;
       ws.role = authObj.role;
       ws.actor = ws._actor;
+      // Register the connection (drops any stale socket for the same device).
+      connections.set(ws._deviceId, ws);
       send(ws, {
         t: "auth-ok",
         ...encryptJSON(key, {
@@ -251,6 +391,8 @@ wss.on("connection", (ws, req) => {
         }),
       });
       logAudit({ actor: ws._actor, role: ws._role, action: "SESSION_OPEN", target: SERVER_ID, result: "OK" });
+      // Supervisor came online: deliver anything queued while it was away.
+      if (ws._role === "supervisor") flushPending(ws._deviceId);
       return;
     }
 
@@ -267,7 +409,10 @@ wss.on("connection", (ws, req) => {
         return send(ws, { t: "rpc-res", ...encryptJSON(ws._key, { id, ok: false, error: "RBAC_DENIED" }) });
       }
       try {
-        const result = handleRpc({ actor: ws._actor, role: ws._role }, kind, payload);
+        const result = handleRpc(
+          { actor: ws._actor, role: ws._role, name: ws._name, badge: ws._badge, deviceId: ws._deviceId, unit: ws._unit },
+          kind, payload
+        );
         send(ws, { t: "rpc-res", ...encryptJSON(ws._key, { id, ok: true, result }) });
       } catch (e) {
         send(ws, { t: "rpc-res", ...encryptJSON(ws._key, { id, ok: false, error: String(e.message || e) }) });
@@ -278,6 +423,9 @@ wss.on("connection", (ws, req) => {
 
   ws.on("close", () => {
     if (ws._authed) {
+      // Only drop the registry entry if it still points at THIS socket
+      // (a newer connection for the same device must not be evicted).
+      if (connections.get(ws._deviceId) === ws) connections.delete(ws._deviceId);
       logAudit({ actor: ws._actor, role: ws._role, action: "SESSION_CLOSE", target: SERVER_ID, result: "OK" });
     }
   });

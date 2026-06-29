@@ -25,14 +25,28 @@ import {
   mockOpsPlans,
   mockSignedPlans,
   mockAlerts,
-  mockSupervisor,
 } from "./mock";
 import { lanClient } from "../lan/client";
+import { loadIdentity, saveIdentity } from "./identity";
+import type { SupervisorIdentity } from "./identity";
 
-export interface SupervisorIdentity {
-  name: string;
-  badge: string;
-  unit: string;
+export type { SupervisorIdentity } from "./identity";
+
+/** A dataset/OPS-plan pushed from an investigator device to this supervisor. */
+export type DeliveryType = "stats" | "caseStatus" | "opsPlan";
+
+export interface Delivery {
+  id: string;
+  dtype: DeliveryType;
+  from: string; // investigator name
+  fromBadge: string;
+  fromDeviceId: string;
+  to: string; // supervisor deviceId
+  manifest: Record<string, any>; // small summary (title, caseNumber, counts…)
+  body: any; // stats JSON / digest rows / { pdfBase64, fileName }
+  sentAt: string;
+  status: "unread" | "read" | "approved" | "returned";
+  decision?: { by: string; decision: string; comments: string; at: string };
 }
 
 export interface AuditEntry {
@@ -98,6 +112,10 @@ export const dataService = {
   start() {
     if (started) return;
     started = true;
+    // Register this machine under its Settings identity before connecting so
+    // investigators see the correct name/unit in their push picker.
+    const id = loadIdentity();
+    lanClient.setIdentity({ role: "supervisor", ...id });
     lanClient.connect();
   },
 
@@ -132,8 +150,50 @@ export const dataService = {
   },
 
   async getSupervisor(): Promise<SupervisorIdentity> {
-    const unit = lanClient.session?.unit || mockSupervisor.unit;
-    return { name: mockSupervisor.name, badge: mockSupervisor.badge, unit };
+    const id = loadIdentity();
+    // Prefer the unit the node confirmed for this session, else Settings.
+    return { ...id, unit: lanClient.session?.unit || id.unit };
+  },
+
+  /** Current registered identity (synchronous, for Settings form). */
+  getIdentity(): SupervisorIdentity {
+    return loadIdentity();
+  },
+
+  /** Persist a new identity and re-register with the LAN node. */
+  updateIdentity(next: SupervisorIdentity): SupervisorIdentity {
+    saveIdentity(next);
+    lanClient.setIdentity({ role: "supervisor", ...next });
+    return next;
+  },
+
+  // --- Inbox (incoming deliveries from investigators) ----------------------
+
+  /** Pull this supervisor's inbox from the node (cache-less; small payloads). */
+  async getDeliveries(): Promise<Delivery[]> {
+    try {
+      return await lanClient.request<Delivery[]>("get:deliveries");
+    } catch {
+      return [];
+    }
+  },
+
+  /** Mark a delivery as read. */
+  ackDelivery(deliveryId: string): Promise<void> {
+    lanClient.action("action:delivery:ack", { deliveryId }).catch(() => {});
+    return Promise.resolve();
+  },
+
+  /** Approve or return an OPS-plan delivery; routes the decision back. */
+  decideDelivery(
+    deliveryId: string,
+    decision: "approved" | "returned",
+    comments: string
+  ): Promise<void> {
+    lanClient
+      .action("action:delivery:decision", { deliveryId, decision, comments })
+      .catch(() => {});
+    return Promise.resolve();
   },
 
   /** Sign an OPS plan — optimistic locally, authoritative write over LAN. */

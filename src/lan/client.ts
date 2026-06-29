@@ -22,7 +22,12 @@ export type ConnState =
   | "offline";
 
 export interface LiveEvent {
-  kind: "ops:new" | "case:activity" | "alert:new";
+  kind:
+    | "ops:new"
+    | "case:activity"
+    | "alert:new"
+    | "delivery:new"
+    | "delivery:decision";
   payload: any;
 }
 
@@ -60,7 +65,7 @@ const MAX_BACKOFF = 10000;
 export class LanClient {
   private url: string;
   private psk: string;
-  private identity: { role: string; name: string; badge: string };
+  private identity: { role: string; name: string; badge: string; deviceId?: string; unit?: string };
 
   private ws: WebSocket | null = null;
   private key: CryptoKey | null = null;
@@ -82,7 +87,7 @@ export class LanClient {
   constructor(opts?: {
     url?: string;
     psk?: string;
-    identity?: { role: string; name: string; badge: string };
+    identity?: { role: string; name: string; badge: string; deviceId?: string; unit?: string };
   }) {
     this.url = opts?.url || DEFAULT_URL;
     this.psk = opts?.psk || DEFAULT_PSK;
@@ -91,6 +96,20 @@ export class LanClient {
       name: "Sgt. Michael Reynolds",
       badge: "#4521",
     };
+  }
+
+  /**
+   * Update this machine's registered identity (from Settings). If already
+   * connected, reconnect so the LAN node re-registers us under the new
+   * name/unit and addresses future deliveries correctly.
+   */
+  setIdentity(identity: { role?: string; name: string; badge: string; deviceId?: string; unit?: string }) {
+    this.identity = { role: identity.role || this.identity.role, ...identity };
+    if (this.wantConnected) {
+      // Bounce the socket; reconnect logic re-runs the handshake with the
+      // new identity.
+      this.ws?.close();
+    }
   }
 
   // --- public API ----------------------------------------------------------
@@ -238,6 +257,8 @@ export class LanClient {
           role: this.identity.role,
           name: this.identity.name,
           badge: this.identity.badge,
+          deviceId: this.identity.deviceId,
+          unit: this.identity.unit,
           nonce: msg.nonce,
         });
         this.send({ t: "auth", ...auth });

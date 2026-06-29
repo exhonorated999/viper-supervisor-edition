@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import Dashboard from "./Dashboard";
 import AuditLog from "./AuditLog";
+import Inbox from "./Inbox";
+import Settings from "./Settings";
 import { dataService } from "./data/service";
 import type { ConnState } from "./lan/client";
 import {
@@ -16,11 +18,19 @@ import {
   IconCheckShield,
 } from "./icons";
 
+const IconInbox = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+    <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+  </svg>
+);
+
 type NavKey =
   | "Dashboard"
   | "Cases"
   | "Assignments"
   | "OPS Plans"
+  | "Inbox"
   | "Investigators"
   | "Reports"
   | "Alerts Log"
@@ -32,6 +42,7 @@ const NAV: { key: NavKey; icon: JSX.Element }[] = [
   { key: "Investigators", icon: <IconInvestigators /> },
   { key: "Assignments", icon: <IconAssignments /> },
   { key: "OPS Plans", icon: <IconOps /> },
+  { key: "Inbox", icon: <IconInbox /> },
   { key: "Alerts Log", icon: <IconAlerts /> },
   { key: "Reports", icon: <IconReports /> },
   { key: "Settings", icon: <IconSettings /> },
@@ -43,6 +54,8 @@ export default function App() {
   const [conn, setConn] = useState<ConnState>("idle");
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [queued, setQueued] = useState(0);
+  const [unread, setUnread] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     dataService.start();
@@ -51,8 +64,36 @@ export default function App() {
       setLastSync(info.lastSync);
       setQueued(info.queued);
     });
-    return off;
+    // Initial unread count from the node inbox.
+    dataService
+      .getDeliveries()
+      .then((d) => setUnread(d.filter((x) => x.status === "unread").length))
+      .catch(() => {});
+    // Live: incoming delivery → notification + unread bump.
+    const offEvent = dataService.lan.onEvent((e) => {
+      if (e.kind === "delivery:new") {
+        setUnread((n) => n + 1);
+        const d = e.payload || {};
+        const what =
+          d.dtype === "opsPlan"
+            ? "OPS plan for approval"
+            : d.dtype === "stats"
+            ? "stats snapshot"
+            : "case-status digest";
+        setNotice(`Incoming ${what} from ${d.from || "an investigator"}`);
+        setTimeout(() => setNotice(null), 6000);
+      }
+    });
+    return () => {
+      off();
+      offEvent();
+    };
   }, []);
+
+  // Viewing the inbox clears the unread badge.
+  useEffect(() => {
+    if (active === "Inbox") setUnread(0);
+  }, [active]);
 
   return (
     <div className="app">
@@ -79,6 +120,9 @@ export default function App() {
             >
               {item.icon}
               <span>{item.key}</span>
+              {item.key === "Inbox" && unread > 0 && (
+                <span className="nav-badge">{unread > 99 ? "99+" : unread}</span>
+              )}
             </button>
           ))}
           <button
@@ -98,10 +142,25 @@ export default function App() {
           <Dashboard />
         ) : active === "Audit Log" ? (
           <AuditLog />
+        ) : active === "Inbox" ? (
+          <Inbox />
+        ) : active === "Settings" ? (
+          <Settings />
         ) : (
           <Placeholder name={active} />
         )}
       </main>
+
+      {notice && (
+        <div className="delivery-notice" onClick={() => setActive("Inbox")}>
+          <span className="dn-dot" />
+          <div>
+            <div className="dn-title">Incoming Delivery</div>
+            <div className="dn-sub">{notice}</div>
+          </div>
+          <span className="dn-cta">View →</span>
+        </div>
+      )}
     </div>
   );
 }

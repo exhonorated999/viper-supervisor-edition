@@ -1,0 +1,32 @@
+[
+  {
+    "content": "[P3-1] LAN node: add registry + router (roster, register, push, delivery routing, queue)",
+    "id": "1",
+    "status": "completed"
+  },
+  {
+    "content": "[P3-2] Supervisor edition: Settings identity (deviceId/name/unit/badge) + register on connect",
+    "id": "2",
+    "status": "completed"
+  },
+  {
+    "content": "[P3-3] Supervisor edition: incoming-delivery notification + Inbox view (stats/caseStatus/opsPlan approval)",
+    "id": "3",
+    "status": "completed"
+  },
+  {
+    "content": "[P3-4] VIPER main: supervisor-link module (WS client, AES crypto, IPC discover/push) + preload API",
+    "id": "4",
+    "status": "completed"
+  },
+  {
+    "content": "[P3-5] VIPER renderer: push dialog UI (roster dropdown) + buttons on dashboard & OPS plan",
+    "id": "5",
+    "status": "completed"
+  },
+  {
+    "content": "[P3-6] End-to-end test: investigator push -> node route -> supervisor inbox (stats, digest, OPS PDF)",
+    "id": "6",
+    "status": "completed"
+  }
+]
