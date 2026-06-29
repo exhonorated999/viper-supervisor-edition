@@ -16,9 +16,9 @@ export interface SupervisorIdentity {
 const KEY = "viper.supervisor.identity";
 
 const DEFAULTS: SupervisorIdentity = {
-  name: "Sgt. Michael Reynolds",
-  badge: "#4521",
-  unit: "Major Crimes Unit",
+  name: "",
+  badge: "",
+  unit: "",
 };
 
 export function loadIdentity(): SupervisorIdentity {
@@ -27,9 +27,9 @@ export function loadIdentity(): SupervisorIdentity {
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<SupervisorIdentity>;
       return {
-        name: parsed.name || DEFAULTS.name,
-        badge: parsed.badge || DEFAULTS.badge,
-        unit: parsed.unit || DEFAULTS.unit,
+        name: parsed.name ?? DEFAULTS.name,
+        badge: parsed.badge ?? DEFAULTS.badge,
+        unit: parsed.unit ?? DEFAULTS.unit,
       };
     }
   } catch {

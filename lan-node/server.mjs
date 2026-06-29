@@ -529,7 +529,9 @@ wss.on("connection", (ws, req) => {
   });
 });
 
-startLiveEvents();
+// Live-event demo generator disabled for the clean build — the supervisor
+// receives real data via investigator pushes (Inbox), not synthetic events.
+// startLiveEvents();
 
 console.log(`\n  V.I.P.E.R. LAN Node`);
 console.log(`  ───────────────────────────────`);
@@ -539,7 +541,7 @@ console.log(`  node id     ${NODE_ID}   (pin this on clients)`);
 console.log(`  security    ECDSA/ECDH P-256 · HKDF · AES-256-GCM (mutual auth, FS)`);
 console.log(`  trust       ${trust.size} device(s) enrolled (TOFU + revoke)`);
 console.log(`  audit log   ${AUDIT_FILE}`);
-console.log(`  live events every 14s\n`);
+console.log(`  data        clean slate — awaiting investigator pushes\n`);
 
 process.on("SIGINT", () => {
   if (liveTimer) clearInterval(liveTimer);

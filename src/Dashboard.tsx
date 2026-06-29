@@ -68,6 +68,14 @@ const METRIC_FILTER: Partial<Record<MetricKey, (c: CaseStatus) => boolean>> = {
   gunsRecovered: (c) => c.lastActivityKind === "Evidence",
 };
 
+// derive up-to-two-letter avatar initials from a display name
+function initials(name: string): string {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "—";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [cases, setCases] = useState<CaseStatus[]>([]);
@@ -80,6 +88,7 @@ export default function Dashboard() {
   const [selected, setSelected] = useState<MetricKey | null>(null);
   const [modalPlan, setModalPlan] = useState<OpsPlan | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+  const [lastSync, setLastSync] = useState<number | null>(null);
 
   const loadAll = () => {
     dataService.getStats().then(setStats);
@@ -89,6 +98,7 @@ export default function Dashboard() {
     dataService.getSignedOpsPlans().then(setSigned);
     dataService.getAlerts().then(setAlerts);
     dataService.getSupervisor().then(setSupervisor);
+    setLastSync(Date.now());
   };
 
   useEffect(() => {
@@ -156,16 +166,18 @@ export default function Dashboard() {
         </div>
         <button className="unit-select">
           <span>🏛</span>
-          <span>{supervisor.unit}</span>
+          <span>{supervisor.unit || "Unit not set"}</span>
           <IconChevron size={16} />
         </button>
         <div className="supervisor">
           <div className="supervisor-meta">
-            <div className="supervisor-name">{supervisor.name}</div>
-            <div className="supervisor-badge">Badge {supervisor.badge}</div>
+            <div className="supervisor-name">{supervisor.name || "Unregistered"}</div>
+            <div className="supervisor-badge">
+              {supervisor.badge ? `Badge ${supervisor.badge}` : "Set identity in Settings"}
+            </div>
           </div>
           <div className="avatar">
-            MR<span className="status-dot" />
+            {initials(supervisor.name)}<span className="status-dot" />
           </div>
         </div>
       </div>
@@ -174,10 +186,17 @@ export default function Dashboard() {
       <div className="section-label">
         <span>Month to Date&nbsp;&nbsp;·&nbsp;&nbsp;Year to Date</span>
         <span className="last-updated">
-          <IconRefresh size={14} /> Last Updated: 10:32 AM
+          <IconRefresh size={14} /> Last Updated:{" "}
+          {lastSync ? new Date(lastSync).toLocaleTimeString() : "—"}
         </span>
       </div>
       <div className="metric-row rise" style={{ animationDelay: "60ms" }}>
+        {stats.metrics.length === 0 ? (
+          <div className="panel empty-state">
+            No unit metrics yet. Stats appear here once an investigator pushes a
+            stats snapshot from Project V.I.P.E.R.
+          </div>
+        ) : (
         <div className="grid">
           {stats.metrics.map((m) => {
             const meta = METRIC_META[m.key];
@@ -202,6 +221,7 @@ export default function Dashboard() {
             );
           })}
         </div>
+        )}
       </div>
 
       {/* ---------- MID SECTION ---------- */}
@@ -243,6 +263,11 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="donut-wrap">
+                {stats.breakdown.length === 0 ? (
+                  <div className="empty-state" style={{ width: "100%" }}>
+                    No case data yet.
+                  </div>
+                ) : (<>
                 <div className="donut-box">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -279,6 +304,7 @@ export default function Dashboard() {
                     </div>
                   ))}
                 </div>
+                </>)}
               </div>
             </div>
           </div>
@@ -342,6 +368,13 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
+              {workload.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="empty-cell">
+                    No investigators reporting yet.
+                  </td>
+                </tr>
+              )}
               {workload.map((w) => (
                 <tr key={w.id}>
                   <td>
@@ -379,6 +412,9 @@ export default function Dashboard() {
               <button className="panel-link" style={{ fontSize: 12 }} onClick={() => setSelected(null)}>clear</button>
             </div>
           )}
+          {filteredCases.length === 0 && (
+            <div className="empty-state">No recent case activity.</div>
+          )}
           {filteredCases.slice(0, 6).map((c) => {
             const kind = c.lastActivityKind === "New Case" ? "New" : c.lastActivityKind;
             return (
@@ -403,6 +439,9 @@ export default function Dashboard() {
             <div className="panel-title">Alerts &amp; Notifications</div>
             <button className="panel-link">View All</button>
           </div>
+          {alerts.length === 0 && (
+            <div className="empty-state">No alerts.</div>
+          )}
           {alerts.map((a) => (
             <div className={`alert-item ${a.severity}`} key={a.id}>
               <span className={`alert-icon ${a.severity}`}>
@@ -549,14 +588,7 @@ function AssignCase() {
         </div>
         <div className="field">
           <label>Assign To</label>
-          <select className="select" value={investigator} onChange={(e) => setInvestigator(e.target.value)}>
-            <option value="">Select Investigator</option>
-            <option>Det. Jason Martinez</option>
-            <option>Det. Kevin Johnson</option>
-            <option>Det. Sarah Williams</option>
-            <option>Det. Marcus Allen</option>
-            <option>Det. Lisa Chen</option>
-          </select>
+          <input className="input" value={investigator} onChange={(e) => setInvestigator(e.target.value)} placeholder="Investigator name…" />
         </div>
         <div className="field">
           <label>Priority</label>

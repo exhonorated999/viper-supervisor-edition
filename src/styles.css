@@ -1265,3 +1265,23 @@ textarea.input {
 }
 .secure-pin > div:first-child { flex: 1; min-width: 0; }
 .secure-pin .mono { word-break: break-all; }
+
+
+/* ---- Empty states (clean slate / awaiting LAN data) ---------------------- */
+.empty-state {
+  padding: 22px 18px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+  border: 1px dashed var(--border, #2a323d);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.015);
+}
+.metric-row .empty-state { margin: 0; }
+.empty-cell {
+  padding: 22px 12px !important;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+}
