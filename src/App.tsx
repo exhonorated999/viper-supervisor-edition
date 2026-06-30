@@ -4,6 +4,7 @@ import Inbox from "./Inbox";
 import Settings from "./Settings";
 import Cases from "./Cases";
 import Investigators from "./Investigators";
+import OpsPlans from "./OpsPlans";
 import { dataService } from "./data/service";
 import type { ConnState } from "./lan/client";
 import {
@@ -138,6 +139,8 @@ export default function App() {
           <Cases />
         ) : active === "Investigators" ? (
           <Investigators />
+        ) : active === "OPS Plans" ? (
+          <OpsPlans />
         ) : (
           <Placeholder name={active} />
         )}

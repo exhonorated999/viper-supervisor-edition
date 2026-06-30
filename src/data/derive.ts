@@ -22,7 +22,17 @@ import type {
   MetricKey,
   CaseBreakdownSlice,
   InvestigatorWorkload,
+  OpsPlan,
+  RiskLevel,
 } from "../types";
+
+/** Normalise an arbitrary risk/priority label to a dashboard RiskLevel. */
+function toRiskLevel(raw: unknown): RiskLevel {
+  const s = String(raw || "").toLowerCase();
+  if (/high|critical|severe|1|priority/.test(s)) return "High Risk";
+  if (/low|routine|3/.test(s)) return "Low Risk";
+  return "Medium Risk";
+}
 
 /** Normalise an investigator status label to a dashboard CaseState. */
 function toCaseState(raw: unknown): CaseState {
@@ -147,6 +157,54 @@ export function deriveCasesFromDigest(body: any): CaseStatus[] {
       lastActivityDate,
     };
   });
+}
+
+/**
+ * Map a pushed opsPlan delivery into the Dashboard's OpsPlan shape.
+ *
+ * The investigator sends a manifest ({ title, caseNumber, risk, date,
+ * location }) plus a one-page PDF body. The supervisor's review status lives
+ * on the delivery itself: status "approved" → Signed, "returned" → Returned,
+ * everything else → Pending. The signature / return decision (if any) is
+ * carried in delivery.decision.
+ */
+export function deriveOpsPlanFromDelivery(delivery: any): OpsPlan {
+  const m = delivery?.manifest || {};
+  const status: OpsPlan["status"] =
+    delivery?.status === "approved"
+      ? "Signed"
+      : delivery?.status === "returned"
+      ? "Returned"
+      : "Pending";
+
+  const summaryBits = [
+    m.caseNumber ? `Case ${m.caseNumber}` : null,
+    m.date || null,
+    m.location || null,
+  ].filter(Boolean);
+
+  const plan: OpsPlan = {
+    id: String(delivery?.id || m.caseNumber || "OPS"),
+    title: String(m.title || "Operations Plan"),
+    detective: String(delivery?.from || "Investigator"),
+    submittedDate: String(delivery?.sentAt || new Date().toISOString()),
+    risk: toRiskLevel(m.risk),
+    status,
+    summary: summaryBits.join(" · ") || "One-page OPS plan submitted for approval.",
+  };
+
+  const dec = delivery?.decision;
+  if (dec) {
+    plan.signedBy = dec.by;
+    plan.signedAt = dec.at;
+    plan.comments = dec.comments;
+  }
+  // Carry the attached one-page PDF through so the review modal can open it.
+  if (delivery?.body?.pdfBase64) {
+    plan.fileName = delivery.body.fileName || "operations-plan.pdf";
+    plan.pdfBase64 = delivery.body.pdfBase64;
+  }
+  return plan;
 }
 
 /**

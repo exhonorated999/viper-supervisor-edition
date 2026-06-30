@@ -136,6 +136,10 @@ export default function Dashboard() {
           setFlash(`Stats snapshot received · ${d.from || "investigator"}`);
         } else if (d?.dtype === "caseStatus") {
           setFlash(`Case-status digest received · ${d.from || "investigator"}`);
+        } else if (d?.dtype === "opsPlan") {
+          dataService.getPendingOpsPlans().then(setPending);
+          dataService.getSignedOpsPlans().then(setSigned);
+          setFlash(`OPS plan received for approval · ${d.from || "investigator"}`);
         }
       }
     });

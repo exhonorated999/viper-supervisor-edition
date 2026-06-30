@@ -563,6 +563,14 @@ button {
   font-size: 12px;
   color: var(--text-dim);
 }
+.ops-summary-line {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .badge {
   font-size: 11px;

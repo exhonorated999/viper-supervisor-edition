@@ -13,6 +13,21 @@ interface Props {
 const riskClass = (r: OpsPlan["risk"]) =>
   r === "High Risk" ? "high" : r === "Medium Risk" ? "medium" : "low";
 
+/** Decode the attached base64 PDF and open it in a new tab. */
+function openPdf(plan: OpsPlan) {
+  try {
+    const b64 = plan.pdfBase64 || "";
+    const clean = b64.includes(",") ? b64.split(",")[1] : b64;
+    const bytes = Uint8Array.from(atob(clean), (c) => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch {
+    alert("Unable to open PDF — payload may be malformed.");
+  }
+}
+
 export default function OpsPlanModal({
   plan,
   supervisorName,
@@ -82,6 +97,28 @@ export default function OpsPlanModal({
             Operational Summary
           </div>
           <div className="plan-summary">{plan.summary}</div>
+
+          <div className="section-label" style={{ margin: "16px 0 8px" }}>
+            Operations Plan Document
+          </div>
+          <div className="pdf-tile">
+            <div className="pdf-icon">PDF</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: "#fff" }}>{plan.fileName || "operations-plan.pdf"}</div>
+              <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                {plan.pdfBase64
+                  ? "One-page operations plan submitted for approval"
+                  : "No PDF was attached to this submission"}
+              </div>
+            </div>
+            <button
+              className="btn btn-ghost"
+              disabled={!plan.pdfBase64}
+              onClick={() => openPdf(plan)}
+            >
+              Open PDF
+            </button>
+          </div>
 
           {signed ? (
             <div className="signed-banner">

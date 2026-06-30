@@ -30,7 +30,7 @@ import { lanClient } from "../lan/client";
 import { loadIdentity, saveIdentity } from "./identity";
 import type { SupervisorIdentity } from "./identity";
 import { getDeviceKey, getDeviceIdSync } from "../lan/devicekey";
-import { deriveStatsFromDelivery, deriveCasesFromDigest, deriveWorkloadFromDigest } from "./derive";
+import { deriveStatsFromDelivery, deriveCasesFromDigest, deriveWorkloadFromDigest, deriveOpsPlanFromDelivery } from "./derive";
 
 export type { SupervisorIdentity } from "./identity";
 
@@ -154,6 +154,36 @@ async function readWithDelivery<K extends keyof Cache, T>(
   return read(rpcKind, cacheKey, fallback);
 }
 
+/**
+ * Build the supervisor's OPS-plan worklists from the inbox. Every opsPlan
+ * delivery is reshaped into an OpsPlan; "pending" returns the ones still
+ * awaiting a decision (newest first), "resolved" returns the signed/returned
+ * ones. Falls back to the cached list / mock when offline. This is what makes
+ * a pushed "Send for Approval" actually surface on the Dashboard + OPS Plans
+ * screen (not only in the raw Inbox).
+ */
+async function readOpsPlans(which: "pending" | "resolved"): Promise<OpsPlan[]> {
+  const cacheKey = which === "pending" ? "opsPending" : "opsSigned";
+  const fallback = which === "pending" ? mockOpsPlans : mockSignedPlans;
+  await lanClient.waitForConnected(2500);
+  try {
+    const deliveries = await lanClient.request<Delivery[]>("get:deliveries");
+    const plans = deliveries
+      .filter((d) => d.dtype === "opsPlan")
+      .sort((a, b) => b.sentAt.localeCompare(a.sentAt))
+      .map((d) => deriveOpsPlanFromDelivery(d));
+    const list =
+      which === "pending"
+        ? plans.filter((p) => p.status === "Pending")
+        : plans.filter((p) => p.status === "Signed" || p.status === "Returned");
+    (cache as Record<string, unknown>)[cacheKey] = list;
+    persist();
+    return list;
+  } catch {
+    return ((cache as Record<string, unknown>)[cacheKey] as OpsPlan[]) ?? fallback;
+  }
+}
+
 export const dataService = {
   /** Begin connecting to the LAN node (idempotent). */
   start() {
@@ -191,10 +221,10 @@ export const dataService = {
     );
   },
   getPendingOpsPlans() {
-    return read("get:ops:pending", "opsPending", mockOpsPlans);
+    return readOpsPlans("pending");
   },
   getSignedOpsPlans() {
-    return read("get:ops:signed", "opsSigned", mockSignedPlans);
+    return readOpsPlans("resolved");
   },
   getAlerts() {
     return read("get:alerts", "alerts", mockAlerts);
@@ -295,11 +325,14 @@ export const dataService = {
       signedAt: new Date().toISOString(),
       comments: signature.comments,
     };
+    // plan.id IS the delivery id (deriveOpsPlanFromDelivery), so route the
+    // approval through the same decision path the Inbox uses — this flips the
+    // delivery to "approved" on the node and notifies the investigator.
     lanClient
-      .action("action:ops:sign", {
-        planId: plan.id,
-        signedBy: signature.signedBy,
-        comments: signature.comments,
+      .action("action:delivery:decision", {
+        deliveryId: plan.id,
+        decision: "approved",
+        comments: signature.comments || "",
       })
       .catch(() => {
         /* queued offline; flushed on reconnect */
@@ -310,7 +343,11 @@ export const dataService = {
   returnOpsPlan(plan: OpsPlan, comments: string): Promise<OpsPlan> {
     const returned: OpsPlan = { ...plan, status: "Returned", comments };
     lanClient
-      .action("action:ops:return", { planId: plan.id, comments })
+      .action("action:delivery:decision", {
+        deliveryId: plan.id,
+        decision: "returned",
+        comments,
+      })
       .catch(() => {});
     return Promise.resolve(returned);
   },

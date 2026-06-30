@@ -102,6 +102,9 @@ export interface OpsPlan {
   signedBy?: string;
   signedAt?: string; // ISO datetime
   comments?: string;
+  // The one-page OPS plan PDF the investigator attached (base64), if any.
+  fileName?: string;
+  pdfBase64?: string;
 }
 
 export type AlertSeverity = "critical" | "warning" | "info";
