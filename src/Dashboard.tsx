@@ -118,6 +118,18 @@ export default function Dashboard() {
       } else if (e.kind === "alert:new") {
         setAlerts((a) => [e.payload, ...a]);
         setFlash(`New alert · ${e.payload.title}`);
+      } else if (e.kind === "delivery:new") {
+        // An investigator pushed a stats / case-status snapshot — refresh the
+        // dashboard so the delivered data populates the cards and charts.
+        const d = e.payload;
+        dataService.getStats().then(setStats);
+        dataService.getCases().then(setCases);
+        setLastSync(Date.now());
+        if (d?.dtype === "stats") {
+          setFlash(`Stats snapshot received · ${d.from || "investigator"}`);
+        } else if (d?.dtype === "caseStatus") {
+          setFlash(`Case-status digest received · ${d.from || "investigator"}`);
+        }
       }
     });
     return () => {
