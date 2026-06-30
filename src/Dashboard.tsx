@@ -12,6 +12,7 @@ import {
   Cell,
 } from "recharts";
 import { dataService, type SupervisorIdentity } from "./data/service";
+import { deriveTrendFromCases } from "./data/derive";
 import type {
   Stats,
   CaseStatus,
@@ -161,6 +162,14 @@ export default function Dashboard() {
     return f ? cases.filter(f) : cases;
   }, [cases, selected]);
 
+  // The pushed stats snapshot has no time series, so synthesize the Unit
+  // Overview trend from the case-status digest's dated activity. Fall back to
+  // whatever trend the stats payload carried (usually empty).
+  const trendData = useMemo(() => {
+    const t = deriveTrendFromCases(cases);
+    return t.length ? t : stats?.trend ?? [];
+  }, [cases, stats]);
+
   const handleResolved = (plan: OpsPlan) => {
     if (plan.status === "Signed") {
       setPending((p) => p.filter((x) => x.id !== plan.id));
@@ -262,7 +271,7 @@ export default function Dashboard() {
                 </button>
               </div>
               <ResponsiveContainer width="100%" height={210}>
-                <LineChart data={stats.trend} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                <LineChart data={trendData} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
                   <CartesianGrid stroke="#232a34" vertical={false} />
                   <XAxis dataKey="label" stroke="#6b7280" fontSize={11} tickLine={false} axisLine={false} />
                   <YAxis stroke="#6b7280" fontSize={11} tickLine={false} axisLine={false} />

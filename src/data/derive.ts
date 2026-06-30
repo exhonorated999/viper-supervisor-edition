@@ -24,6 +24,7 @@ import type {
   InvestigatorWorkload,
   OpsPlan,
   RiskLevel,
+  TrendPoint,
 } from "../types";
 
 /** Normalise an arbitrary risk/priority label to a dashboard RiskLevel. */
@@ -148,6 +149,7 @@ export function deriveCasesFromDigest(body: any): CaseStatus[] {
     const lastActivityDate = String(
       activity?.lastActivity || r.lastActivity || ""
     ).slice(0, 10);
+    const isArrest = /arrest/i.test(String(r.state || ""));
     return {
       caseNumber: String(r.caseNumber || "—"),
       detective: String(r.assignee || "—"),
@@ -157,7 +159,7 @@ export function deriveCasesFromDigest(body: any): CaseStatus[] {
       openedDate: lastActivityDate,
       ageDays: 0,
       lastActivity: latest ? String(latest.action) : String(r.state || "Updated"),
-      lastActivityKind: "New Case",
+      lastActivityKind: isArrest ? "Arrest" : "New Case",
       lastActivityDate,
       activity,
     };
@@ -251,4 +253,56 @@ export function deriveWorkloadFromDigest(body: any): InvestigatorWorkload[] {
         | "Light",
     }))
     .sort((a, b) => b.total - a.total);
+}
+
+/**
+ * Synthesize the Unit Overview trend (Cases Opened / Closed / Arrests) from
+ * the per-case data the digest now carries. The pushed *stats* snapshot has no
+ * time series, but the *case-status* digest does (real createdAt via the
+ * "Case opened" activity event, plus closed/transferred + arrest dates). We
+ * bucket by month and return the most recent 8 buckets oldest→newest.
+ */
+export function deriveTrendFromCases(cases: CaseStatus[]): TrendPoint[] {
+  type Bucket = { casesOpened: number; casesClosed: number; arrests: number };
+  const buckets = new Map<string, Bucket>();
+  const ensure = (key: string): Bucket => {
+    let b = buckets.get(key);
+    if (!b) {
+      b = { casesOpened: 0, casesClosed: 0, arrests: 0 };
+      buckets.set(key, b);
+    }
+    return b;
+  };
+  const monthKey = (iso: string): string | null => {
+    const d = new Date(iso);
+    if (isNaN(+d)) return null;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  };
+
+  cases.forEach((c) => {
+    // Real opened date = the "Case opened" activity event (case createdAt),
+    // falling back to the row's openedDate.
+    const openedEv = c.activity?.events?.find((e) => /case opened/i.test(e.action));
+    const openedKey = monthKey(openedEv?.date || c.openedDate);
+    if (openedKey) ensure(openedKey).casesOpened++;
+
+    if (c.state === "Closed" || c.state === "Transferred") {
+      const closedKey = monthKey(c.lastActivityDate);
+      if (closedKey) ensure(closedKey).casesClosed++;
+    }
+    if (c.lastActivityKind === "Arrest") {
+      const arrestKey = monthKey(c.lastActivityDate);
+      if (arrestKey) ensure(arrestKey).arrests++;
+    }
+  });
+
+  const keys = [...buckets.keys()].sort();
+  return keys.slice(-8).map((k) => {
+    const [y, m] = k.split("-");
+    const label = new Date(+y, +m - 1, 1).toLocaleDateString(undefined, {
+      month: "short",
+    });
+    const b = buckets.get(k)!;
+    return { label, casesOpened: b.casesOpened, casesClosed: b.casesClosed, arrests: b.arrests };
+  });
 }
