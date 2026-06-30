@@ -12,7 +12,7 @@ import {
   Cell,
 } from "recharts";
 import { dataService, type SupervisorIdentity } from "./data/service";
-import { deriveTrendFromCases } from "./data/derive";
+import { deriveTrendFromCases, type TrendRange } from "./data/derive";
 import type {
   Stats,
   CaseStatus,
@@ -58,6 +58,13 @@ const DONUT_COLORS: Record<string, string> = {
   Transferred: "#EF5350",
 };
 
+// Unit Overview trend window options
+const RANGE_LABELS: Record<TrendRange, string> = {
+  month: "This Month",
+  quarter: "This Quarter",
+  year: "This Year",
+};
+
 // which case-activity kind a metric card filters by
 const METRIC_FILTER: Partial<Record<MetricKey, (c: CaseStatus) => boolean>> = {
   casesOpened: (c) => c.state === "Open",
@@ -90,6 +97,8 @@ export default function Dashboard() {
   const [modalPlan, setModalPlan] = useState<OpsPlan | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<number | null>(null);
+  const [trendRange, setTrendRange] = useState<TrendRange>("month");
+  const [rangeOpen, setRangeOpen] = useState(false);
 
   const loadAll = () => {
     dataService.getStats().then(setStats);
@@ -166,9 +175,9 @@ export default function Dashboard() {
   // Overview trend from the case-status digest's dated activity. Fall back to
   // whatever trend the stats payload carried (usually empty).
   const trendData = useMemo(() => {
-    const t = deriveTrendFromCases(cases);
+    const t = deriveTrendFromCases(cases, trendRange);
     return t.length ? t : stats?.trend ?? [];
-  }, [cases, stats]);
+  }, [cases, stats, trendRange]);
 
   const handleResolved = (plan: OpsPlan) => {
     if (plan.status === "Signed") {
@@ -266,9 +275,38 @@ export default function Dashboard() {
                 <div className="panel-title">
                   <IconBarChart size={16} /> Unit Overview
                 </div>
-                <button className="unit-select" style={{ padding: "6px 10px", fontSize: 12 }}>
-                  This Month <IconChevron size={14} />
-                </button>
+                <div
+                  className="unit-select"
+                  style={{ padding: "6px 10px", fontSize: 12, position: "relative", cursor: "pointer", userSelect: "none" }}
+                  onClick={() => setRangeOpen((o) => !o)}
+                >
+                  {RANGE_LABELS[trendRange]} <IconChevron size={14} />
+                  {rangeOpen && (
+                    <>
+                      <div
+                        className="dropdown-backdrop"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRangeOpen(false);
+                        }}
+                      />
+                      <div className="unit-menu" onClick={(e) => e.stopPropagation()}>
+                        {(Object.keys(RANGE_LABELS) as TrendRange[]).map((r) => (
+                          <button
+                            key={r}
+                            className={`unit-menu-item${r === trendRange ? " active" : ""}`}
+                            onClick={() => {
+                              setTrendRange(r);
+                              setRangeOpen(false);
+                            }}
+                          >
+                            {RANGE_LABELS[r]}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
               <ResponsiveContainer width="100%" height={210}>
                 <LineChart data={trendData} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>

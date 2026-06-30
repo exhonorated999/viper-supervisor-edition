@@ -259,50 +259,89 @@ export function deriveWorkloadFromDigest(body: any): InvestigatorWorkload[] {
  * Synthesize the Unit Overview trend (Cases Opened / Closed / Arrests) from
  * the per-case data the digest now carries. The pushed *stats* snapshot has no
  * time series, but the *case-status* digest does (real createdAt via the
- * "Case opened" activity event, plus closed/transferred + arrest dates). We
- * bucket by month and return the most recent 8 buckets oldest→newest.
+ * "Case opened" activity event, plus closed/transferred + arrest dates).
+ *
+ * The `range` controls the window + bucket granularity:
+ *   - "month"   → weekly buckets within the current calendar month
+ *   - "quarter" → weekly buckets across the last ~13 weeks
+ *   - "year"    → monthly buckets across the last 12 months
  */
-export function deriveTrendFromCases(cases: CaseStatus[]): TrendPoint[] {
-  type Bucket = { casesOpened: number; casesClosed: number; arrests: number };
+export type TrendRange = "month" | "quarter" | "year";
+
+function _startOfWeek(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() - x.getDay()); // Sunday start
+  return x;
+}
+
+export function deriveTrendFromCases(
+  cases: CaseStatus[],
+  range: TrendRange = "month"
+): TrendPoint[] {
+  const now = new Date();
+  let windowStart: Date;
+  let granularity: "week" | "month";
+  if (range === "year") {
+    windowStart = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    granularity = "month";
+  } else if (range === "quarter") {
+    windowStart = new Date(now);
+    windowStart.setDate(now.getDate() - 91);
+    granularity = "week";
+  } else {
+    windowStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    granularity = "week";
+  }
+
+  // Collect (date, series) contributions from each case.
+  const pts: { date: string; series: "casesOpened" | "casesClosed" | "arrests" }[] = [];
+  cases.forEach((c) => {
+    const openedEv = c.activity?.events?.find((e) => /case opened/i.test(e.action));
+    pts.push({ date: openedEv?.date || c.openedDate, series: "casesOpened" });
+    if (c.state === "Closed" || c.state === "Transferred")
+      pts.push({ date: c.lastActivityDate, series: "casesClosed" });
+    if (c.lastActivityKind === "Arrest")
+      pts.push({ date: c.lastActivityDate, series: "arrests" });
+  });
+
+  type Bucket = {
+    label: string;
+    sortKey: string;
+    casesOpened: number;
+    casesClosed: number;
+    arrests: number;
+  };
   const buckets = new Map<string, Bucket>();
-  const ensure = (key: string): Bucket => {
+  pts.forEach(({ date, series }) => {
+    const d = new Date(date);
+    if (isNaN(+d) || d < windowStart) return;
+    let key: string;
+    let label: string;
+    if (granularity === "month") {
+      key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      label = new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString(undefined, {
+        month: "short",
+      });
+    } else {
+      const ws = _startOfWeek(d);
+      key = ws.toISOString().slice(0, 10);
+      label = ws.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    }
     let b = buckets.get(key);
     if (!b) {
-      b = { casesOpened: 0, casesClosed: 0, arrests: 0 };
+      b = { label, sortKey: key, casesOpened: 0, casesClosed: 0, arrests: 0 };
       buckets.set(key, b);
     }
-    return b;
-  };
-  const monthKey = (iso: string): string | null => {
-    const d = new Date(iso);
-    if (isNaN(+d)) return null;
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  };
-
-  cases.forEach((c) => {
-    // Real opened date = the "Case opened" activity event (case createdAt),
-    // falling back to the row's openedDate.
-    const openedEv = c.activity?.events?.find((e) => /case opened/i.test(e.action));
-    const openedKey = monthKey(openedEv?.date || c.openedDate);
-    if (openedKey) ensure(openedKey).casesOpened++;
-
-    if (c.state === "Closed" || c.state === "Transferred") {
-      const closedKey = monthKey(c.lastActivityDate);
-      if (closedKey) ensure(closedKey).casesClosed++;
-    }
-    if (c.lastActivityKind === "Arrest") {
-      const arrestKey = monthKey(c.lastActivityDate);
-      if (arrestKey) ensure(arrestKey).arrests++;
-    }
+    b[series]++;
   });
 
-  const keys = [...buckets.keys()].sort();
-  return keys.slice(-8).map((k) => {
-    const [y, m] = k.split("-");
-    const label = new Date(+y, +m - 1, 1).toLocaleDateString(undefined, {
-      month: "short",
-    });
-    const b = buckets.get(k)!;
-    return { label, casesOpened: b.casesOpened, casesClosed: b.casesClosed, arrests: b.arrests };
-  });
+  return [...buckets.values()]
+    .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+    .map(({ label, casesOpened, casesClosed, arrests }) => ({
+      label,
+      casesOpened,
+      casesClosed,
+      arrests,
+    }));
 }
