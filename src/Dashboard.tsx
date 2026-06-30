@@ -103,9 +103,15 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadAll();
-    // Re-sync whenever the LAN (re)connects so mock fallback is replaced live.
+    // Re-sync only on the *transition* into connected (first connect or after a
+    // drop) — NOT on every sync tick. Otherwise the whole dashboard re-renders
+    // (and replays its entrance animations) on each RPC/heartbeat, which reads
+    // as a distracting periodic refresh. Live data arrives via onEvent below.
+    let wasConnected = dataService.lan.state === "connected";
     const offState = dataService.lan.onState((s) => {
-      if (s === "connected") loadAll();
+      const nowConnected = s === "connected";
+      if (nowConnected && !wasConnected) loadAll();
+      wasConnected = nowConnected;
     });
     // Real-time push events from investigator devices.
     const offEvent = dataService.lan.onEvent((e) => {
@@ -124,6 +130,7 @@ export default function Dashboard() {
         const d = e.payload;
         dataService.getStats().then(setStats);
         dataService.getCases().then(setCases);
+        dataService.getWorkload().then(setWorkload);
         setLastSync(Date.now());
         if (d?.dtype === "stats") {
           setFlash(`Stats snapshot received · ${d.from || "investigator"}`);

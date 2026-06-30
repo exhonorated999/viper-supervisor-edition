@@ -30,7 +30,7 @@ import { lanClient } from "../lan/client";
 import { loadIdentity, saveIdentity } from "./identity";
 import type { SupervisorIdentity } from "./identity";
 import { getDeviceKey, getDeviceIdSync } from "../lan/devicekey";
-import { deriveStatsFromDelivery, deriveCasesFromDigest } from "./derive";
+import { deriveStatsFromDelivery, deriveCasesFromDigest, deriveWorkloadFromDigest } from "./derive";
 
 export type { SupervisorIdentity } from "./identity";
 
@@ -182,7 +182,13 @@ export const dataService = {
     );
   },
   getWorkload() {
-    return read("get:workload", "workload", mockWorkload);
+    return readWithDelivery(
+      "caseStatus",
+      "get:workload",
+      "workload",
+      mockWorkload,
+      (d) => deriveWorkloadFromDigest(d.body)
+    );
   },
   getPendingOpsPlans() {
     return read("get:ops:pending", "opsPending", mockOpsPlans);

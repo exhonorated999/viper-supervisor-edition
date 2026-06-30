@@ -21,6 +21,7 @@ import type {
   Metric,
   MetricKey,
   CaseBreakdownSlice,
+  InvestigatorWorkload,
 } from "../types";
 
 /** Normalise an investigator status label to a dashboard CaseState. */
@@ -31,6 +32,14 @@ function toCaseState(raw: unknown): CaseState {
   if (/ongoing|progress|pending|review/.test(s)) return "Ongoing";
   if (/open|active|new/.test(s)) return "Open";
   return "Ongoing";
+}
+
+/** Two-letter avatar initials from a display name. */
+function initials(name: string): string {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "—";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 /** Pull a numeric value out of a headline row whose value may be "12" or "$1,200" or "48%". */
@@ -138,4 +147,45 @@ export function deriveCasesFromDigest(body: any): CaseStatus[] {
       lastActivityDate,
     };
   });
+}
+
+/**
+ * Aggregate a pushed case-status digest into per-investigator workload rows.
+ * Cases are grouped by assignee; open/ongoing/aging counts are derived from
+ * each row's state and last-activity date. The snapshot carries no creation
+ * dates, so "new this month" is reported as 0.
+ */
+export function deriveWorkloadFromDigest(body: any): InvestigatorWorkload[] {
+  const rows: any[] = Array.isArray(body?.rows) ? body.rows : [];
+  type Agg = { total: number; open: number; ongoing: number; aging: number };
+  const byInv = new Map<string, Agg>();
+
+  rows.forEach((r) => {
+    const name = String(r.assignee || "Investigator").trim() || "Investigator";
+    const g = byInv.get(name) || { total: 0, open: 0, ongoing: 0, aging: 0 };
+    const state = toCaseState(r.state);
+    g.total += 1;
+    if (state !== "Closed" && state !== "Transferred") g.open += 1;
+    if (state === "Ongoing") g.ongoing += 1;
+    const t = Date.parse(String(r.lastActivity || ""));
+    if (!Number.isNaN(t) && (Date.now() - t) / 86_400_000 > 60) g.aging += 1;
+    byInv.set(name, g);
+  });
+
+  return [...byInv.entries()]
+    .map(([name, g]) => ({
+      id: "inv-" + name.replace(/\s+/g, "-").toLowerCase(),
+      name,
+      initials: initials(name),
+      total: g.total,
+      open: g.open,
+      ongoing: g.ongoing,
+      aging: g.aging,
+      newMtd: 0,
+      band: (g.total >= 12 ? "High" : g.total >= 5 ? "Balanced" : "Light") as
+        | "High"
+        | "Balanced"
+        | "Light",
+    }))
+    .sort((a, b) => b.total - a.total);
 }

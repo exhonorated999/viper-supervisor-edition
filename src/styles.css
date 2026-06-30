@@ -695,6 +695,45 @@ button {
 .band.Balanced { color: var(--green); background: rgba(76, 175, 80, 0.14); }
 .band.Light { color: var(--cyan); background: rgba(0, 183, 195, 0.14); }
 
+/* Filter chips + search (Cases / Investigators screens) */
+.chip {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.chip:hover { color: var(--text); border-color: var(--cyan); }
+.chip-active {
+  color: var(--cyan);
+  border-color: var(--cyan);
+  background: rgba(0, 183, 195, 0.12);
+}
+.search-input {
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  min-width: 240px;
+  outline: none;
+}
+.search-input::placeholder { color: var(--text-faint); }
+.search-input:focus { border-color: var(--cyan); }
+.state-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
 .legend-inline {
   display: flex;
   gap: 18px;

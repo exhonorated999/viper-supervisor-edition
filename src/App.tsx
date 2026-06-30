@@ -3,6 +3,8 @@ import Dashboard from "./Dashboard";
 import AuditLog from "./AuditLog";
 import Inbox from "./Inbox";
 import Settings from "./Settings";
+import Cases from "./Cases";
+import Investigators from "./Investigators";
 import { dataService } from "./data/service";
 import type { ConnState } from "./lan/client";
 import {
@@ -146,6 +148,10 @@ export default function App() {
           <Inbox />
         ) : active === "Settings" ? (
           <Settings />
+        ) : active === "Cases" ? (
+          <Cases />
+        ) : active === "Investigators" ? (
+          <Investigators />
         ) : (
           <Placeholder name={active} />
         )}
