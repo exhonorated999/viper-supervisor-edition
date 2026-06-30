@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import Dashboard from "./Dashboard";
-import AuditLog from "./AuditLog";
 import Inbox from "./Inbox";
 import Settings from "./Settings";
 import Cases from "./Cases";
@@ -13,10 +12,8 @@ import {
   IconInvestigators,
   IconAssignments,
   IconOps,
-  IconAlerts,
   IconReports,
   IconSettings,
-  IconAudit,
   IconCheckShield,
 } from "./icons";
 
@@ -35,7 +32,6 @@ type NavKey =
   | "Inbox"
   | "Investigators"
   | "Reports"
-  | "Alerts Log"
   | "Settings";
 
 const NAV: { key: NavKey; icon: JSX.Element }[] = [
@@ -45,14 +41,13 @@ const NAV: { key: NavKey; icon: JSX.Element }[] = [
   { key: "Assignments", icon: <IconAssignments /> },
   { key: "OPS Plans", icon: <IconOps /> },
   { key: "Inbox", icon: <IconInbox /> },
-  { key: "Alerts Log", icon: <IconAlerts /> },
   { key: "Reports", icon: <IconReports /> },
   { key: "Settings", icon: <IconSettings /> },
-  // Audit Log shown in mockup below Settings
+  // Audit Log & Alerts Log live as tabs inside Settings
 ];
 
 export default function App() {
-  const [active, setActive] = useState<NavKey | "Audit Log">("Dashboard");
+  const [active, setActive] = useState<NavKey>("Dashboard");
   const [conn, setConn] = useState<ConnState>("idle");
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [queued, setQueued] = useState(0);
@@ -127,13 +122,6 @@ export default function App() {
               )}
             </button>
           ))}
-          <button
-            className={`nav-item${active === "Audit Log" ? " active" : ""}`}
-            onClick={() => setActive("Audit Log")}
-          >
-            <IconAudit />
-            <span>Audit Log</span>
-          </button>
         </nav>
 
         <LanStatus conn={conn} lastSync={lastSync} queued={queued} />
@@ -142,8 +130,6 @@ export default function App() {
       <main className="main">
         {active === "Dashboard" ? (
           <Dashboard />
-        ) : active === "Audit Log" ? (
-          <AuditLog />
         ) : active === "Inbox" ? (
           <Inbox />
         ) : active === "Settings" ? (

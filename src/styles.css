@@ -734,6 +734,30 @@ button {
   white-space: nowrap;
 }
 
+/* Sub-tabs inside Settings (General / Audit Log / Alerts Log) */
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.settings-tab:hover { color: var(--text); }
+.settings-tab.active {
+  color: var(--cyan);
+  border-bottom-color: var(--cyan);
+}
+
 .legend-inline {
   display: flex;
   gap: 18px;

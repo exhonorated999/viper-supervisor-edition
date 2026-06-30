@@ -2,10 +2,16 @@ import { useEffect, useState } from "react";
 import { dataService } from "./data/service";
 import type { SupervisorIdentity } from "./data/identity";
 import type { TrustedDevice } from "./data/service";
+import AuditLog from "./AuditLog";
+import AlertsLog from "./AlertsLog";
+
+type SettingsTab = "general" | "audit" | "alerts";
 
 // Settings — registered identity + secure-link administration for this
 // supervisor machine (protocol v2: device key, node pinning, trust store).
+// Also hosts the Audit Log and Alerts Log as sub-tabs.
 export default function Settings() {
+  const [tab, setTab] = useState<SettingsTab>("general");
   const [id, setId] = useState<SupervisorIdentity>(() => dataService.getIdentity());
   const [draft, setDraft] = useState<SupervisorIdentity>(id);
   const [saved, setSaved] = useState(false);
@@ -40,10 +46,20 @@ export default function Settings() {
       <div className="topbar">
         <div>
           <h1 className="page-title">Settings</h1>
-          <div className="page-sub">Registered user, machine identity &amp; secure LAN link.</div>
+          <div className="page-sub">Registered user, machine identity, secure LAN link, audit &amp; alerts.</div>
         </div>
       </div>
 
+      <div className="settings-tabs">
+        <button className={`settings-tab${tab === "general" ? " active" : ""}`} onClick={() => setTab("general")}>General</button>
+        <button className={`settings-tab${tab === "audit" ? " active" : ""}`} onClick={() => setTab("audit")}>Audit Log</button>
+        <button className={`settings-tab${tab === "alerts" ? " active" : ""}`} onClick={() => setTab("alerts")}>Alerts Log</button>
+      </div>
+
+      {tab === "audit" && <AuditLog embedded />}
+      {tab === "alerts" && <AlertsLog />}
+
+      {tab === "general" && (<>
       {/* Registered identity */}
       <div className="panel" style={{ maxWidth: 720 }}>
         <div className="panel-head">
@@ -151,6 +167,7 @@ export default function Settings() {
           </div>
         )}
       </div>
+      </>)}
     </>
   );
 }

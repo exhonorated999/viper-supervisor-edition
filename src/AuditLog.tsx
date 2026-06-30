@@ -6,7 +6,7 @@ const RESULT_COLOR: Record<string, string> = {
   DENIED: "var(--red)",
 };
 
-export default function AuditLog() {
+export default function AuditLog({ embedded = false }: { embedded?: boolean } = {}) {
   const [rows, setRows] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [testMsg, setTestMsg] = useState<string | null>(null);
@@ -37,14 +37,8 @@ export default function AuditLog() {
 
   return (
     <>
-      <div className="topbar">
-        <div>
-          <h1 className="page-title">Audit Log</h1>
-          <div className="page-sub">
-            Append-only record of supervisor actions over the LAN handshake (RFP §3.2)
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
+      {embedded ? (
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginBottom: 14 }}>
           <button className="btn btn-ghost" onClick={runRbacTest}>
             Run RBAC Self-Test
           </button>
@@ -52,7 +46,24 @@ export default function AuditLog() {
             Refresh
           </button>
         </div>
-      </div>
+      ) : (
+        <div className="topbar">
+          <div>
+            <h1 className="page-title">Audit Log</h1>
+            <div className="page-sub">
+              Append-only record of supervisor actions over the LAN handshake (RFP §3.2)
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn btn-ghost" onClick={runRbacTest}>
+              Run RBAC Self-Test
+            </button>
+            <button className="btn btn-primary" onClick={load}>
+              Refresh
+            </button>
+          </div>
+        </div>
+      )}
 
       {testMsg && (
         <div
