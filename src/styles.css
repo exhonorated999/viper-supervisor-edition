@@ -572,6 +572,59 @@ button {
   text-overflow: ellipsis;
 }
 
+/* ── Case activity (redacted timeline) ── */
+.activity-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cyan);
+  white-space: nowrap;
+}
+.activity-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.at-chip {
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 4px 11px;
+}
+.at-chip b { color: var(--text); margin-right: 3px; }
+.activity-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.activity-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.activity-row:last-child { border-bottom: none; }
+.activity-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex: 0 0 auto;
+}
+.activity-action { font-size: 13px; color: var(--text); }
+.activity-meta {
+  display: flex;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
 .badge {
   font-size: 11px;
   font-weight: 600;

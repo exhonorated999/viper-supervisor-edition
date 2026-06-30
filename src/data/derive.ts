@@ -143,7 +143,11 @@ export function deriveStatsFromDelivery(body: any): Stats {
 export function deriveCasesFromDigest(body: any): CaseStatus[] {
   const rows: any[] = Array.isArray(body?.rows) ? body.rows : [];
   return rows.map((r) => {
-    const lastActivityDate = String(r.lastActivity || "").slice(0, 10);
+    const activity = r.activity && typeof r.activity === "object" ? r.activity : undefined;
+    const latest = activity?.events?.[0];
+    const lastActivityDate = String(
+      activity?.lastActivity || r.lastActivity || ""
+    ).slice(0, 10);
     return {
       caseNumber: String(r.caseNumber || "—"),
       detective: String(r.assignee || "—"),
@@ -152,9 +156,10 @@ export function deriveCasesFromDigest(body: any): CaseStatus[] {
       description: String(r.label || ""),
       openedDate: lastActivityDate,
       ageDays: 0,
-      lastActivity: String(r.state || "Updated"),
+      lastActivity: latest ? String(latest.action) : String(r.state || "Updated"),
       lastActivityKind: "New Case",
       lastActivityDate,
+      activity,
     };
   });
 }

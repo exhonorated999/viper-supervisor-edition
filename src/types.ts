@@ -62,6 +62,30 @@ export interface Stats {
   breakdown: CaseBreakdownSlice[];
 }
 
+/** A single redacted, metadata-only case activity event (no PII / content). */
+export interface CaseActivityEvent {
+  date: string; // ISO datetime
+  lane: "incident" | "investigation" | "forensics" | "subject";
+  category: string; // warrant | rms | digital | surveillance | fieldwork | custom …
+  action: string; // curated status label, e.g. "Search warrant served"
+  significance: "major" | "supporting";
+}
+
+/** Compact, PII-free activity rollup for one case. */
+export interface CaseActivity {
+  lastActivity: string; // ISO date
+  totals: {
+    total: number;
+    warrants: number;
+    warrantsServed: number;
+    evidence: number;
+    reports: number;
+    fieldwork: number;
+  };
+  cadence: { week: string; count: number }[];
+  events: CaseActivityEvent[];
+}
+
 /** Read-only case record mirrored from an investigator device. */
 export interface CaseStatus {
   caseNumber: string;
@@ -74,6 +98,8 @@ export interface CaseStatus {
   lastActivity: string; // human label, e.g. "Arrest Made"
   lastActivityKind: "Arrest" | "Warrant" | "Evidence" | "Closed" | "New Case";
   lastActivityDate: string; // ISO date
+  /** Redacted activity feed pushed from the investigator (optional). */
+  activity?: CaseActivity;
 }
 
 /** Aggregated workload row for one investigator. */

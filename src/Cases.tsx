@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataService } from "./data/service";
 import type { CaseStatus, CaseState } from "./types";
+import CaseActivityModal from "./CaseActivityModal";
 
 const STATE_COLORS: Record<CaseState, string> = {
   Open: "#0078D4",
@@ -21,6 +22,7 @@ export default function Cases() {
   const [cases, setCases] = useState<CaseStatus[]>([]);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<"all" | CaseState>("all");
+  const [active, setActive] = useState<CaseStatus | null>(null);
 
   const load = () => dataService.getCases().then(setCases);
 
@@ -109,13 +111,14 @@ export default function Cases() {
               <th>State</th>
               <th>Priority</th>
               <th>Synopsis</th>
+              <th>Activity</th>
               <th>Last Activity</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="empty-cell">
+                <td colSpan={7} className="empty-cell">
                   {cases.length === 0
                     ? "No cases yet. They appear here once an investigator pushes a case-status digest."
                     : "No cases match the current filter."}
@@ -123,7 +126,12 @@ export default function Cases() {
               </tr>
             )}
             {filtered.map((c) => (
-              <tr key={c.caseNumber}>
+              <tr
+                key={c.caseNumber}
+                onClick={() => c.activity && setActive(c)}
+                style={{ cursor: c.activity ? "pointer" : "default" }}
+                title={c.activity ? "View case activity" : undefined}
+              >
                 <td style={{ fontWeight: 600 }}>{c.caseNumber}</td>
                 <td>{c.detective}</td>
                 <td>
@@ -141,7 +149,7 @@ export default function Cases() {
                 <td>{c.caseType}</td>
                 <td
                   style={{
-                    maxWidth: 360,
+                    maxWidth: 320,
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -150,6 +158,15 @@ export default function Cases() {
                   title={c.description}
                 >
                   {c.description || "—"}
+                </td>
+                <td>
+                  {c.activity ? (
+                    <span className="activity-badge" title="View case activity">
+                      {c.activity.totals.total} events ›
+                    </span>
+                  ) : (
+                    <span style={{ color: "var(--text-faint)" }}>—</span>
+                  )}
                 </td>
                 <td style={{ color: "var(--text-dim)" }}>
                   {c.lastActivityDate
@@ -161,6 +178,10 @@ export default function Cases() {
           </tbody>
         </table>
       </div>
+
+      {active && (
+        <CaseActivityModal caseItem={active} onClose={() => setActive(null)} />
+      )}
     </>
   );
 }
