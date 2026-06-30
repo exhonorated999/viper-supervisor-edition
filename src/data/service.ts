@@ -176,7 +176,13 @@ async function readOpsPlans(which: "pending" | "resolved"): Promise<OpsPlan[]> {
       which === "pending"
         ? plans.filter((p) => p.status === "Pending")
         : plans.filter((p) => p.status === "Signed" || p.status === "Returned");
-    (cache as Record<string, unknown>)[cacheKey] = list;
+    // Keep the (potentially multi-MB) PDF only on the in-memory objects the
+    // modal opens — strip it from the localStorage cache to stay well under
+    // the storage quota.
+    (cache as Record<string, unknown>)[cacheKey] = list.map((p) => ({
+      ...p,
+      pdfBase64: undefined,
+    }));
     persist();
     return list;
   } catch {
