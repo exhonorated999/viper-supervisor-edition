@@ -168,14 +168,36 @@ async function readOpsPlans(which: "pending" | "resolved"): Promise<OpsPlan[]> {
   await lanClient.waitForConnected(2500);
   try {
     const deliveries = await lanClient.request<Delivery[]>("get:deliveries");
-    const plans = deliveries
+    const ops = deliveries
       .filter((d) => d.dtype === "opsPlan")
-      .sort((a, b) => b.sentAt.localeCompare(a.sentAt))
-      .map((d) => deriveOpsPlanFromDelivery(d));
-    const list =
-      which === "pending"
-        ? plans.filter((p) => p.status === "Pending")
-        : plans.filter((p) => p.status === "Signed" || p.status === "Returned");
+      .sort((a, b) => b.sentAt.localeCompare(a.sentAt)); // newest first
+
+    let list: OpsPlan[];
+    if (which === "pending") {
+      // An investigator who re-sends the same case's OPS plan creates a new
+      // delivery each time — collapse those so only the LATEST still-pending
+      // submission per (case + sender) shows up for approval. Resolved
+      // (approved/returned) submissions are excluded here.
+      const pending = ops.filter(
+        (d) => d.status !== "approved" && d.status !== "returned"
+      );
+      const seen = new Set<string>();
+      const deduped: Delivery[] = [];
+      for (const d of pending) {
+        const key =
+          (d.manifest?.caseNumber || d.manifest?.title || d.id) +
+          "::" +
+          (d.fromDeviceId || d.from || "");
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(d);
+      }
+      list = deduped.map((d) => deriveOpsPlanFromDelivery(d));
+    } else {
+      list = ops
+        .filter((d) => d.status === "approved" || d.status === "returned")
+        .map((d) => deriveOpsPlanFromDelivery(d));
+    }
     // Keep the (potentially multi-MB) PDF only on the in-memory objects the
     // modal opens — strip it from the localStorage cache to stay well under
     // the storage quota.
