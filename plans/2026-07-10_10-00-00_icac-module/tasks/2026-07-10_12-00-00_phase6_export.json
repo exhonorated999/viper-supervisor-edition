@@ -1,0 +1,32 @@
+[
+  {
+    "content": "Add pdf-lib dep; create export/rows.ts (safe flat row model from CyberTip[])",
+    "id": "P6-1",
+    "status": "completed"
+  },
+  {
+    "content": "export/csv.ts + export/json.ts builders",
+    "id": "P6-2",
+    "status": "completed"
+  },
+  {
+    "content": "export/xlsx.ts — minimal valid multi-sheet OpenXML via jszip (inlineStr)",
+    "id": "P6-3",
+    "status": "completed"
+  },
+  {
+    "content": "export/pdf.ts — pdf-lib one-page ICAC command summary",
+    "id": "P6-4",
+    "status": "completed"
+  },
+  {
+    "content": "export/index.ts download helpers; ExportDialog.tsx; wire Export Center panel in Icac.tsx + CSS",
+    "id": "P6-5",
+    "status": "completed"
+  },
+  {
+    "content": "Verify: tsc -b + vite build clean; smoke-test each builder in node",
+    "id": "P6-6",
+    "status": "completed"
+  }
+]

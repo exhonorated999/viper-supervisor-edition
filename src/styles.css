@@ -1594,8 +1594,15 @@ textarea.input {
 .icac-soon { flex: 1; display: grid; place-content: center; text-align: center; gap: 6px; }
 .ic-soon-n { font-size: 32px; font-weight: 700; color: #fff; }
 .ic-soon-note { color: var(--text-faint); font-size: 11px; margin-top: 10px; max-width: 260px; }
-.icac-export { display: flex; flex-direction: column; gap: 8px; }
+.icac-export { display: flex; flex-direction: column; gap: 10px; }
 .icac-export-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border-soft); border-radius: 8px; }
+.icac-export-lead { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
+.icac-export-formats { display: flex; flex-wrap: wrap; gap: 6px; }
+.icac-export-chip {
+  font-size: 11px; letter-spacing: 0.4px; color: #bfe9ee;
+  background: rgba(0,183,195,0.08); border: 1px solid rgba(0,183,195,0.22);
+  border-radius: 999px; padding: 3px 10px;
+}
 
 /* Import dialog */
 .icac-import-modal { width: min(560px, 94vw); }
@@ -1652,3 +1659,25 @@ textarea.input {
 .icac-field textarea:focus { outline: none; border-color: var(--cyan); }
 .icac-field textarea { resize: vertical; min-height: 44px; }
 .icac-assign-err { color: var(--red); font-size: 12.5px; line-height: 1.5; }
+
+/* Export dialog (Phase 6 — local file export, never LAN) */
+.icac-export-modal { width: min(520px, 94vw); }
+.icac-fmt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.icac-fmt-card {
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+  text-align: left; cursor: pointer;
+  background: var(--panel-2, #14161c); color: var(--text);
+  border: 1px solid var(--border, #2a2f3a); border-radius: 10px;
+  padding: 10px 12px; transition: border-color var(--t-hover), background var(--t-hover);
+}
+.icac-fmt-card:hover { border-color: rgba(0,183,195,0.5); }
+.icac-fmt-card.sel { border-color: var(--cyan); background: rgba(0,183,195,0.08); }
+.icac-fmt-label { font-size: 14px; color: #fff; font-weight: 600; }
+.icac-fmt-sub { font-size: 11px; color: var(--text-dim); }
+.icac-export-count { font-size: 12.5px; color: var(--text-dim); margin-bottom: 10px; }
+.icac-export-notice {
+  font-size: 12px; color: #bfe9ee; line-height: 1.5;
+  background: rgba(0,183,195,0.07); border-left: 3px solid var(--cyan);
+  border-radius: 6px; padding: 9px 12px;
+}
+.icac-export-ok { color: var(--green); font-size: 13px; margin-top: 10px; }

@@ -9,6 +9,7 @@ import { deriveDashboard, type DashboardData, type HeatColumn } from "./derive";
 import type { CyberTip } from "./types";
 import ImportDialog from "./ImportDialog";
 import AssignDialog from "./AssignDialog";
+import ExportDialog from "./ExportDialog";
 import { wireAssignmentEvents } from "./assign";
 import { dataService } from "../data/service";
 
@@ -20,6 +21,7 @@ export default function Icac() {
   const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
   const [assignTip, setAssignTip] = useState<CyberTip | null>(null);
+  const [showExport, setShowExport] = useState(false);
   const [now, setNow] = useState(Date.now());
 
   const unit = dataService.getIdentity().unit || "Command Unit";
@@ -179,15 +181,30 @@ export default function Icac() {
               ) : <Empty msg="Import CyberTips to start assigning" />}
             </Panel>
 
-            <Panel title="Export Center" meta="Phase 6">
+            <Panel title="Export Center" meta="Local file · never LAN">
               <div className="icac-export">
-                {["CSV export", "Spreadsheet (.xlsx)", "JSON export"].map((x) => (
-                  <div className="icac-export-row" key={x}>
-                    <span>{x}</span>
-                    <button className="btn btn-ghost" disabled>Export</button>
-                  </div>
-                ))}
-                <div className="ic-soon-note">Export wiring arrives in Phase 6.</div>
+                <div className="icac-export-lead">
+                  Export the intelligence store for briefings, case files, or another
+                  system. Choose format &amp; scope — everything stays on this machine.
+                </div>
+                <div className="icac-export-formats">
+                  {[
+                    { k: "csv", t: "CSV" },
+                    { k: "xlsx", t: "XLSX" },
+                    { k: "json", t: "JSON" },
+                    { k: "pdf", t: "PDF" },
+                  ].map((f) => (
+                    <span className="icac-export-chip" key={f.k}>{f.t}</span>
+                  ))}
+                </div>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => setShowExport(true)}
+                  disabled={!tips.length}
+                >
+                  Open Export Center
+                </button>
+                {!tips.length && <div className="ic-soon-note">Import CyberTips to enable export.</div>}
               </div>
             </Panel>
           </div>
@@ -267,6 +284,14 @@ export default function Icac() {
           tip={assignTip}
           onClose={() => setAssignTip(null)}
           onDone={() => { setTips([...getTips()]); setNow(Date.now()); }}
+        />
+      )}
+
+      {showExport && (
+        <ExportDialog
+          tips={tips}
+          unit={unit}
+          onClose={() => setShowExport(false)}
         />
       )}
     </>

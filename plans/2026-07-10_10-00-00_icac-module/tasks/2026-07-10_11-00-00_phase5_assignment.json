@@ -22,11 +22,11 @@
   {
     "content": "[P5-5] VIPER investigator: persistent receiver auto-connect + ack IPC + preload",
     "id": "p5-5",
-    "status": "in_progress"
+    "status": "completed"
   },
   {
     "content": "[P5-6] VIPER investigator: renderer inbox/dashboard alert + acknowledge -> launch case",
     "id": "p5-6",
-    "status": "pending"
+    "status": "completed"
   }
 ]
