@@ -4,6 +4,7 @@ import type { SupervisorIdentity } from "./data/identity";
 import type { TrustedDevice } from "./data/service";
 import AuditLog from "./AuditLog";
 import AlertsLog from "./AlertsLog";
+import IcacSettings from "./icac/IcacSettings";
 
 type SettingsTab = "general" | "audit" | "alerts";
 
@@ -167,6 +168,8 @@ export default function Settings() {
           </div>
         )}
       </div>
+
+      <IcacSettings />
       </>)}
     </>
   );

@@ -5,6 +5,8 @@ import Settings from "./Settings";
 import Cases from "./Cases";
 import Investigators from "./Investigators";
 import OpsPlans from "./OpsPlans";
+import Icac from "./icac/Icac";
+import { isIcacEnabled, onIcacConfigChange } from "./icac/config";
 import { dataService } from "./data/service";
 import type { ConnState } from "./lan/client";
 import {
@@ -16,6 +18,7 @@ import {
   IconReports,
   IconSettings,
   IconCheckShield,
+  IconIcac,
 } from "./icons";
 
 const IconInbox = () => (
@@ -33,9 +36,10 @@ type NavKey =
   | "Inbox"
   | "Investigators"
   | "Reports"
+  | "ICAC"
   | "Settings";
 
-const NAV: { key: NavKey; icon: JSX.Element }[] = [
+const NAV: { key: NavKey; icon: JSX.Element; optional?: boolean }[] = [
   { key: "Dashboard", icon: <IconDashboard /> },
   { key: "Cases", icon: <IconCases /> },
   { key: "Investigators", icon: <IconInvestigators /> },
@@ -43,6 +47,7 @@ const NAV: { key: NavKey; icon: JSX.Element }[] = [
   { key: "OPS Plans", icon: <IconOps /> },
   { key: "Inbox", icon: <IconInbox /> },
   { key: "Reports", icon: <IconReports /> },
+  { key: "ICAC", icon: <IconIcac />, optional: true },
   { key: "Settings", icon: <IconSettings /> },
   // Audit Log & Alerts Log live as tabs inside Settings
 ];
@@ -54,6 +59,16 @@ export default function App() {
   const [queued, setQueued] = useState(0);
   const [unread, setUnread] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
+  const [icacEnabled, setIcacOn] = useState(isIcacEnabled());
+
+  // React to the ICAC Optional-Module toggle from Settings.
+  useEffect(() => onIcacConfigChange(() => setIcacOn(isIcacEnabled())), []);
+  // If ICAC is turned off while viewing it, fall back to the Dashboard.
+  useEffect(() => {
+    if (!icacEnabled && active === "ICAC") setActive("Dashboard");
+  }, [icacEnabled, active]);
+
+  const navItems = NAV.filter((i) => !i.optional || (i.key === "ICAC" && icacEnabled));
 
   useEffect(() => {
     dataService.start();
@@ -110,7 +125,7 @@ export default function App() {
         </div>
 
         <nav className="nav">
-          {NAV.map((item) => (
+          {navItems.map((item) => (
             <button
               key={item.key}
               className={`nav-item${active === item.key ? " active" : ""}`}
@@ -141,6 +156,8 @@ export default function App() {
           <Investigators />
         ) : active === "OPS Plans" ? (
           <OpsPlans />
+        ) : active === "ICAC" ? (
+          <Icac />
         ) : (
           <Placeholder name={active} />
         )}

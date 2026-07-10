@@ -32,6 +32,9 @@ export const IconAssignments = ({ size = 18, style }: IconProps) => (
 export const IconOps = ({ size = 18, style }: IconProps) => (
   <svg {...base(size, style)}><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 7h6M9 11h6M9 15h4" /></svg>
 );
+export const IconIcac = ({ size = 18, style }: IconProps) => (
+  <svg {...base(size, style)}><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" /><path d="M9.5 11.5a2.5 2.5 0 0 1 5 0v1M9.5 13.8c0 1.2.3 2 .8 2.7M14.5 12.6c0 1.6-.3 2.9-1 3.9" /></svg>
+);
 export const IconAlerts = ({ size = 18, style }: IconProps) => (
   <svg {...base(size, style)}><path d="M12 3l9 16H3z" /><path d="M12 10v4M12 17h.01" /></svg>
 );

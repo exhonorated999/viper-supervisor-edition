@@ -1442,3 +1442,86 @@ textarea.input {
   color: var(--text-dim);
   font-size: 13px;
 }
+
+/* ==========================================================================
+   ICAC module — Optional Modules toggle, storage picker, dashboard shell
+   ========================================================================== */
+
+/* Optional Modules toggle row */
+.icac-toggle-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 0 2px;
+}
+.icac-mod-name { color: #fff; font-weight: 600; font-size: 14px; }
+.icac-mod-desc { color: var(--text-dim); font-size: 12.5px; margin-top: 4px; max-width: 520px; }
+
+/* iOS-style switch */
+.switch {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-3);
+  position: relative;
+  cursor: pointer;
+  transition: background var(--t-hover), border-color var(--t-hover);
+  padding: 0;
+}
+.switch.on { background: rgba(0, 183, 195, 0.25); border-color: var(--cyan); }
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform var(--t-hover), background var(--t-hover);
+}
+.switch.on .switch-knob { transform: translateX(20px); background: var(--cyan); }
+
+/* Storage location block */
+.icac-storage {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-soft);
+}
+.icac-loc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+.icac-loc-label { font-size: 13px; }
+.icac-hint { color: var(--text-faint); font-size: 12px; margin-top: 8px; max-width: 560px; }
+
+/* Location chip in the ICAC topbar */
+.icac-loc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  background: var(--panel-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+.icac-loc-chip .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+/* Empty / summary state */
+.icac-empty {
+  min-height: 320px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 40px 20px;
+}
+.icac-empty-title { color: #fff; font-size: 16px; margin-top: 6px; }
+.icac-empty-sub { color: var(--text-dim); font-size: 13px; max-width: 520px; line-height: 1.5; }
