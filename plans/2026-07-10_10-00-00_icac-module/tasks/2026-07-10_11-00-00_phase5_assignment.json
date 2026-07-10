@@ -1,0 +1,32 @@
+[
+  {
+    "content": "[P5-1] LAN node: investigator roster + icac assign/ack RPCs + events + RBAC + offline queue",
+    "id": "p5-1",
+    "status": "completed"
+  },
+  {
+    "content": "[P5-2] Node E2E harness verifying the assignment loop (assign -> event -> ack -> event)",
+    "id": "p5-2",
+    "status": "completed"
+  },
+  {
+    "content": "[P5-3] Supervisor app: client event union + icac/assign.ts adapter + data service methods",
+    "id": "p5-3",
+    "status": "completed"
+  },
+  {
+    "content": "[P5-4] Supervisor app: AssignDialog + wire Assignment Queue panel in Icac.tsx + CSS",
+    "id": "p5-4",
+    "status": "completed"
+  },
+  {
+    "content": "[P5-5] VIPER investigator: persistent receiver auto-connect + ack IPC + preload",
+    "id": "p5-5",
+    "status": "in_progress"
+  },
+  {
+    "content": "[P5-6] VIPER investigator: renderer inbox/dashboard alert + acknowledge -> launch case",
+    "id": "p5-6",
+    "status": "pending"
+  }
+]

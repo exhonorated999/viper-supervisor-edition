@@ -43,7 +43,9 @@ export interface LiveEvent {
     | "case:activity"
     | "alert:new"
     | "delivery:new"
-    | "delivery:decision";
+    | "delivery:decision"
+    | "icac:assign:new"
+    | "icac:assign:ack";
   payload: any;
 }
 

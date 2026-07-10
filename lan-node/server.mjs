@@ -40,8 +40,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.LAN_PORT) || 7071;
 const SERVER_ID = "VIPER-NODE-01";
 const AUDIT_FILE = path.join(__dirname, "audit.log.jsonl");
-const NODE_KEY_FILE = path.join(__dirname, "node-key.json");
-const TRUST_FILE = path.join(__dirname, "trust-store.json");
+const NODE_KEY_FILE = process.env.LAN_NODE_KEY_FILE || path.join(__dirname, "node-key.json");
+const TRUST_FILE = process.env.LAN_TRUST_FILE || path.join(__dirname, "trust-store.json");
 
 const data = buildDataset();
 const audit = [];
@@ -86,11 +86,24 @@ const pendingQueue = new Map();
 const deliveries = new Map();
 let deliverySeq = 1000;
 
+// --- ICAC assignment loop (supervisor -> investigator) ---------------------
+// icacAssignments: assignmentId -> assignment (canonical record for ack).
+// icacPending    : deviceId -> [assignment]  (assignments for an investigator
+//                  that was offline; flushed when it connects).
+// The ONLY case data that ever crosses the wire here is the cybertip NUMBER
+// (plus an optional priority/note) — never identifiers or contraband.
+const icacAssignments = new Map();
+const icacPending = new Map();
+let icacSeq = 2000;
+
 // --- RBAC ------------------------------------------------------------------
 const READS = new Set([
   "get:stats", "get:cases", "get:workload",
   "get:ops:pending", "get:ops:signed", "get:alerts",
   "get:unit", "get:audit", "get:deliveries", "get:trust",
+  // ICAC assignment loop (supervisor -> investigator): supervisor discovers
+  // the live investigator roster and reads its own outbound assignments.
+  "get:investigators", "get:icac:assignments",
 ]);
 const ROLE_PERMS = {
   supervisor: {
@@ -99,6 +112,8 @@ const ROLE_PERMS = {
       "action:ops:sign", "action:ops:return", "action:case:assign",
       "action:delivery:ack", "action:delivery:decision",
       "action:trust:revoke", "action:trust:unrevoke",
+      // Supervisor pushes an ICAC assignment (cybertip NUMBER only).
+      "action:icac:assign",
     ]),
     // Explicitly forbidden — supervisors are read-only on case content and
     // cannot author OPS plans. Used to demonstrate RBAC enforcement.
@@ -106,13 +121,15 @@ const ROLE_PERMS = {
   },
   // Investigator nodes (Project V.I.P.E.R.) initiate delivery. They can see
   // the live supervisor roster and push datasets/OPS plans, but cannot read
-  // or act on supervisor-side case content.
+  // or act on supervisor-side case content. For the ICAC loop they also
+  // RECEIVE assignments and acknowledge them (the reverse direction).
   investigator: {
-    reads: new Set(["get:unit", "get:roster"]),
-    actions: new Set(["action:push"]),
+    reads: new Set(["get:unit", "get:roster", "get:icac:assignments"]),
+    actions: new Set(["action:push", "action:icac:ack"]),
     denied: new Set([
       "action:ops:sign", "action:ops:return", "action:case:assign",
-      "get:cases", "get:stats", "get:audit", "get:trust",
+      "action:icac:assign",
+      "get:cases", "get:stats", "get:audit", "get:trust", "get:investigators",
     ]),
   },
 };
@@ -156,6 +173,68 @@ function handleRpc(conn, kind, payload) {
 
     // --- Push model: roster / deliveries -----------------------------------
     case "get:roster": return rosterList();
+
+    // --- ICAC assignment loop (supervisor -> investigator) -----------------
+    // Supervisor discovers the live investigator roster to address an
+    // assignment. Mirror of get:roster, opposite role.
+    case "get:investigators": return investigatorList();
+
+    case "action:icac:assign": {
+      // Supervisor assigns a CyberTip to one investigator. Body carries ONLY
+      // the cybertip number (+ optional priority/note) — no PII/contraband.
+      const cybertipNumber = String(payload.cybertipNumber || "").trim();
+      if (!cybertipNumber) throw new Error("MISSING_CYBERTIP_NUMBER");
+      const id = `ICAC-${++icacSeq}`;
+      const assignment = {
+        id,
+        cybertipNumber,
+        priority: payload.priority || null,
+        note: payload.note || "",
+        fromName: conn.name, fromBadge: conn.badge, fromDeviceId: conn.deviceId,
+        to: payload.to,
+        sentAt: new Date().toISOString(),
+        status: "sent",
+        acknowledgedAt: null,
+        caseNumber: null,
+      };
+      icacAssignments.set(id, assignment);
+      logAudit({ actor: conn.actor, role: conn.role, action: "ICAC_ASSIGN", target: cybertipNumber, result: "OK" });
+      const online = sendToDevice(payload.to, "icac:assign:new", assignEnvelope(assignment));
+      if (!online) {
+        const q = icacPending.get(payload.to) || [];
+        q.push(assignment);
+        icacPending.set(payload.to, q);
+      }
+      return { assignmentId: id, delivered: online };
+    }
+
+    case "action:icac:ack": {
+      // Investigator acknowledges an assignment (and optionally reports the
+      // case number they opened). Route the ack back to the supervisor.
+      const a = icacAssignments.get(payload.assignmentId);
+      if (a) {
+        a.status = "acknowledged";
+        a.acknowledgedAt = new Date().toISOString();
+        a.caseNumber = payload.caseNumber || null;
+        a.ackDeviceId = conn.deviceId;
+      }
+      logAudit({ actor: conn.actor, role: conn.role, action: "ICAC_ACK", target: a ? a.cybertipNumber : payload.assignmentId, result: "OK" });
+      if (a) {
+        sendToDevice(a.fromDeviceId, "icac:assign:ack", {
+          id: a.id, cybertipNumber: a.cybertipNumber, caseNumber: a.caseNumber,
+          by: conn.name, byBadge: conn.badge, at: a.acknowledgedAt,
+        });
+      }
+      return { ok: true };
+    }
+
+    case "get:icac:assignments": {
+      // Each side pulls the assignments it participates in (on reconnect).
+      const mine = [...icacAssignments.values()].filter(
+        (a) => a.to === conn.deviceId || a.fromDeviceId === conn.deviceId
+      );
+      return mine.sort((x, y) => y.sentAt.localeCompare(x.sentAt));
+    }
 
     // --- Trust administration (supervisor) ---------------------------------
     case "get:trust": {
@@ -384,6 +463,45 @@ function flushPending(deviceId) {
   for (const delivery of q) sendToDevice(deviceId, "delivery:new", delivery);
 }
 
+// Online investigators, as seen by a supervisor's "Assign CyberTip" picker.
+function investigatorList() {
+  const out = [];
+  for (const ws of connections.values()) {
+    if (ws._authed && ws._role === "investigator") {
+      out.push({
+        deviceId: ws._deviceId,
+        name: ws._name,
+        badge: ws._badge,
+        unit: ws._unit,
+      });
+    }
+  }
+  return out;
+}
+
+// The event payload an investigator receives for a new assignment. Contains
+// ONLY the cybertip number (+ priority/note + who sent it) — never PII.
+function assignEnvelope(a) {
+  return {
+    id: a.id,
+    cybertipNumber: a.cybertipNumber,
+    priority: a.priority,
+    note: a.note,
+    from: a.fromName,
+    fromBadge: a.fromBadge,
+    sentAt: a.sentAt,
+  };
+}
+
+// When an investigator (re)connects, flush any ICAC assignments that arrived
+// while it was offline.
+function flushIcacPending(deviceId) {
+  const q = icacPending.get(deviceId);
+  if (!q || !q.length) return;
+  icacPending.delete(deviceId);
+  for (const a of q) sendToDevice(deviceId, "icac:assign:new", assignEnvelope(a));
+}
+
 // --- Wire protocol ---------------------------------------------------------
 function send(ws, obj) {
   try { ws.send(JSON.stringify(obj)); } catch { /* ignore */ }
@@ -493,6 +611,7 @@ wss.on("connection", (ws, req) => {
       });
       logAudit({ actor: ws._actor, role: ws._role, action: existing ? "SESSION_OPEN" : "DEVICE_ENROLL", target: ws._deviceId, result: "OK" });
       if (ws._role === "supervisor") flushPending(ws._deviceId);
+      if (ws._role === "investigator") flushIcacPending(ws._deviceId);
       return;
     }
 

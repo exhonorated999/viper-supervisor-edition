@@ -1623,3 +1623,32 @@ textarea.input {
 .ic-detail { color: var(--text-faint); margin-left: auto; }
 .icac-import-ok { color: var(--green); font-size: 13px; margin-top: 10px; }
 .icac-import-err { color: var(--red); font-size: 13px; margin-top: 10px; }
+
+/* Assignment queue + dialog (Phase 5 — LAN routing, cybertip # only) */
+.btn-sm { padding: 3px 10px; font-size: 12px; line-height: 1.4; }
+.icac-assign-modal { width: min(480px, 94vw); }
+.icac-assign-ct {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: var(--radius);
+  background: rgba(0,183,195,0.06); border: 1px solid rgba(0,183,195,0.18);
+  margin-bottom: 12px; font-size: 13px;
+}
+.icac-assign-ct .mono { color: #fff; font-size: 14px; }
+.icac-assign-banner {
+  font-size: 12px; color: #bfe9ee; line-height: 1.5;
+  background: rgba(0,183,195,0.07); border-left: 3px solid var(--cyan);
+  border-radius: 6px; padding: 9px 12px; margin-bottom: 14px;
+}
+.icac-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.icac-field > span { font-size: 12px; color: var(--text-dim); }
+.icac-field select,
+.icac-field textarea {
+  width: 100%; box-sizing: border-box;
+  background: var(--panel-2, #14161c); color: var(--text);
+  border: 1px solid var(--border, #2a2f3a); border-radius: 8px;
+  padding: 8px 10px; font-size: 13px; font-family: inherit;
+}
+.icac-field select:focus,
+.icac-field textarea:focus { outline: none; border-color: var(--cyan); }
+.icac-field textarea { resize: vertical; min-height: 44px; }
+.icac-assign-err { color: var(--red); font-size: 12.5px; line-height: 1.5; }

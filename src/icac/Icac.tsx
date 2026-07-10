@@ -8,6 +8,8 @@ import { loadIcacIndex, getTips, onIcacDataChange } from "./service";
 import { deriveDashboard, type DashboardData, type HeatColumn } from "./derive";
 import type { CyberTip } from "./types";
 import ImportDialog from "./ImportDialog";
+import AssignDialog from "./AssignDialog";
+import { wireAssignmentEvents } from "./assign";
 import { dataService } from "../data/service";
 
 const DONUT_COLORS = ["#00b7c3", "#0078d4", "#ef5350", "#ffc107", "#4caf50", "#8b5cf6", "#ec4899"];
@@ -17,6 +19,7 @@ export default function Icac() {
   const [tips, setTips] = useState<CyberTip[]>([]);
   const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
+  const [assignTip, setAssignTip] = useState<CyberTip | null>(null);
   const [now, setNow] = useState(Date.now());
 
   const unit = dataService.getIdentity().unit || "Command Unit";
@@ -24,14 +27,26 @@ export default function Icac() {
   useEffect(() => {
     let alive = true;
     setLocation(getIcacLocationLabel());
+    const offAck = wireAssignmentEvents();
     loadIcacIndex(true)
       .then(() => { if (alive) { setTips(getTips()); setNow(Date.now()); } })
       .finally(() => { if (alive) setLoading(false); });
     const off = onIcacDataChange(() => { setTips([...getTips()]); setNow(Date.now()); });
-    return () => { alive = false; off(); };
+    return () => { alive = false; off(); offAck(); };
   }, []);
 
   const data = useMemo<DashboardData>(() => deriveDashboard(tips, now), [tips, now]);
+
+  const queue = useMemo(() => {
+    const rank = (t: CyberTip) => {
+      if (!t.assignment?.assigned_to) return 0;                 // unassigned first
+      if (t.assignment.status === "acknowledged") return 2;     // done last
+      return 1;                                                 // sent / pending
+    };
+    return [...tips].sort(
+      (a, b) => rank(a) - rank(b) || (b.imported_at || "").localeCompare(a.imported_at || "")
+    );
+  }, [tips]);
 
   if (!location) {
     return (
@@ -135,12 +150,33 @@ export default function Icac() {
               ) : <Empty msg="No repeat suspects detected" />}
             </Panel>
 
-            <Panel title="Assignment Queue" meta="Phase 5 · LAN routing">
-              <div className="icac-soon">
-                <div className="ic-soon-n">{data.tiles.find((t) => t.key === "unassigned")?.value ?? 0}</div>
-                <div className="ic-dim">unassigned tips ready to route to investigators</div>
-                <div className="ic-soon-note">Assign → push CyberTip # over LAN → investigator acknowledges. Wired in Phase 5.</div>
-              </div>
+            <Panel title="Assignment Queue" meta="LAN routing · cybertip # only">
+              {tips.length ? (
+                <div className="icac-table-wrap">
+                  <table className="icac-table">
+                    <thead><tr><th>CyberTip</th><th>Assigned To</th><th>Status</th><th></th></tr></thead>
+                    <tbody>
+                      {queue.map((t) => {
+                        const a = t.assignment;
+                        const st = !a?.assigned_to ? "unassigned" : (a.status || "sent");
+                        const chip = st === "acknowledged" ? "s-ok" : st === "sent" ? "s-warn" : "s-read";
+                        return (
+                          <tr key={t.id}>
+                            <td className="mono" style={{ color: "#fff" }}>{t.cybertip_number || "—"}</td>
+                            <td className="ic-dim ic-ellipsis" title={a?.assigned_to || ""}>{a?.assigned_to || "—"}</td>
+                            <td><span className={`status-chip ${chip}`}>{st}</span></td>
+                            <td style={{ textAlign: "right" }}>
+                              <button className="btn btn-ghost btn-sm" onClick={() => setAssignTip(t)}>
+                                {a?.assigned_to ? "Reassign" : "Assign"}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <Empty msg="Import CyberTips to start assigning" />}
             </Panel>
 
             <Panel title="Export Center" meta="Phase 6">
@@ -222,6 +258,14 @@ export default function Icac() {
       {showImport && (
         <ImportDialog
           onClose={() => setShowImport(false)}
+          onDone={() => { setTips([...getTips()]); setNow(Date.now()); }}
+        />
+      )}
+
+      {assignTip && (
+        <AssignDialog
+          tip={assignTip}
+          onClose={() => setAssignTip(null)}
           onDone={() => { setTips([...getTips()]); setNow(Date.now()); }}
         />
       )}
