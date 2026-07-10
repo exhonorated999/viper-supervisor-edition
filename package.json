@@ -2,6 +2,8 @@
   "name": "viper-supervisor-edition",
   "private": true,
   "version": "0.1.0",
+  "description": "V.I.P.E.R. Supervisor Edition — local-first ICAC command dashboard (desktop)",
+  "author": "V.I.P.E.R.",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -11,7 +13,9 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "electron": "electron .",
-    "desktop": "concurrently -k -n lan,web,app -c cyan,blue,magenta \"npm run lan\" \"cross-env APP_PORT=3061 vite\" \"wait-on tcp:127.0.0.1:3061 && cross-env ELECTRON_RENDERER_URL=http://localhost:3061 electron .\""
+    "desktop": "concurrently -k -n lan,web,app -c cyan,blue,magenta \"npm run lan\" \"cross-env APP_PORT=3061 vite\" \"wait-on tcp:127.0.0.1:3061 && cross-env ELECTRON_RENDERER_URL=http://localhost:3061 electron .\"",
+    "pack:dir": "npm run build && electron-builder --dir -c.directories.output=C:/viper-build/release",
+    "dist": "npm run build && electron-builder --win nsis portable -c.directories.output=C:/viper-build/release"
   },
   "dependencies": {
     "jszip": "^3.10.1",
@@ -29,6 +33,7 @@
     "concurrently": "^9.0.1",
     "cross-env": "^10.1.0",
     "electron": "^33.4.11",
+    "electron-builder": "^26.15.3",
     "tsx": "^4.23.0",
     "typescript": "^5.5.3",
     "vite": "^5.4.1",

@@ -1,0 +1,51 @@
+# electron-builder configuration — V.I.P.E.R. Supervisor Edition
+#
+# Local-first desktop distribution. Two Windows targets, both UNSIGNED (prototype):
+#   • nsis     — installer that lets the operator choose the install directory
+#                (including a USB drive) since perMachine is off.
+#   • portable — a single self-contained .exe that runs from a USB stick with
+#                no installation.
+#
+# No cloud, no auto-update feed: updates are delivered by handing over a new
+# installer / portable exe. The renderer is pre-bundled into dist/ by Vite, so
+# the package only needs dist + the Electron main/preload — no node_modules.
+# ---------------------------------------------------------------------------
+
+appId: com.viper.supervisoredition
+productName: VIPER Supervisor Edition
+copyright: Copyright © 2026 V.I.P.E.R.
+
+directories:
+  output: release
+
+# Renderer is bundled by vite (base:"./"); main only uses Electron/Node builtins.
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+
+# Deterministic, offline packaging.
+npmRebuild: false
+electronCompile: false
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false                       # per-user → no admin needed, USB-friendly
+  allowElevation: true
+  allowToChangeInstallationDirectory: true # operator can install onto a USB drive
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: VIPER Supervisor
+  artifactName: ${productName}-Setup-${version}.exe
+
+portable:
+  artifactName: ${productName}-Portable-${version}.exe
