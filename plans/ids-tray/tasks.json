@@ -1,0 +1,37 @@
+[
+  {
+    "content": "Electron scaffold: main.cjs + preload.cjs, package.json main/scripts, download interception + staging IPC",
+    "id": "1",
+    "status": "completed"
+  },
+  {
+    "content": "IDS config + Settings UI (URL/username/password/selectors in localStorage)",
+    "id": "2",
+    "status": "completed"
+  },
+  {
+    "content": "Renderer bridge + staging store (Electron + web fallback)",
+    "id": "3",
+    "status": "completed"
+  },
+  {
+    "content": "IdsTray: slide-out webview + autofill + staging list + batch ingest",
+    "id": "4",
+    "status": "completed"
+  },
+  {
+    "content": "Wire 'Connect to IDS' button into ICAC header + audit actions/labels",
+    "id": "5",
+    "status": "completed"
+  },
+  {
+    "content": "CSS for tray/webview/staging + start-desktop.bat",
+    "id": "6",
+    "status": "completed"
+  },
+  {
+    "content": "Build verify (tsc + vite) + Electron smoke",
+    "id": "7",
+    "status": "completed"
+  }
+]

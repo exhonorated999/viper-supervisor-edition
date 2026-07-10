@@ -5,6 +5,7 @@ import {
 } from "./config";
 import { getIcacStorage, useFallbackStorage } from "./storage/index";
 import IcacSecurity from "./IcacSecurity";
+import IdsSettings from "./ids/IdsSettings";
 
 // Settings → Optional Modules → ICAC Processing.
 // Toggles the module and lets the supervisor choose where the ICAC database is
@@ -106,6 +107,7 @@ export default function IcacSettings() {
           {err && <div className="icac-hint" style={{ color: "var(--red)" }}>{err}</div>}
 
           <IcacSecurity hasLocation={location != null} />
+          <IdsSettings />
         </div>
       )}
     </div>

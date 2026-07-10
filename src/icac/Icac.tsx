@@ -13,6 +13,7 @@ import AssignDialog from "./AssignDialog";
 import ExportDialog from "./ExportDialog";
 import VaultGate from "./VaultGate";
 import AuditDialog from "./AuditDialog";
+import IdsTray from "./ids/IdsTray";
 import { wireAssignmentEvents } from "./assign";
 import { vaultState, onVaultChange, lock } from "./crypto/vault";
 import { logAudit } from "./audit";
@@ -28,6 +29,7 @@ export default function Icac() {
   const [assignTip, setAssignTip] = useState<CyberTip | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
+  const [showIds, setShowIds] = useState(false);
   const [vault, setVault] = useState(vaultState());
   const [role, setRole] = useState(getIcacRole());
   const [now, setNow] = useState(Date.now());
@@ -99,6 +101,7 @@ export default function Icac() {
         vaultUnlocked={vault === "unlocked"}
         onLock={doLock}
         onAudit={() => setShowAudit(true)}
+        onConnect={vault === "locked" ? undefined : () => setShowIds(true)}
       />
 
       {vault === "locked" ? (
@@ -331,6 +334,14 @@ export default function Icac() {
       )}
 
       {showAudit && <AuditDialog onClose={() => setShowAudit(false)} />}
+
+      {showIds && (
+        <IdsTray
+          readonly={readonly}
+          onClose={() => setShowIds(false)}
+          onIngested={() => { loadIcacIndex(true).then(() => { setTips([...getTips()]); setNow(Date.now()); }).catch(() => {}); }}
+        />
+      )}
     </>
   );
 }
@@ -339,9 +350,10 @@ export default function Icac() {
 
 const tooltipStyle = { background: "#1a1f27", border: "1px solid #262d38", borderRadius: 8, color: "#e0e0e0", fontSize: 12 };
 
-function Header({ unit, location, onImport, importDisabled, role, vaultUnlocked, onLock, onAudit }: {
+function Header({ unit, location, onImport, importDisabled, role, vaultUnlocked, onLock, onAudit, onConnect }: {
   unit: string; location: string | null; onImport: () => void; importDisabled?: boolean;
   role?: "command" | "readonly"; vaultUnlocked?: boolean; onLock?: () => void; onAudit?: () => void;
+  onConnect?: () => void;
 }) {
   return (
     <div className="topbar">
@@ -357,6 +369,7 @@ function Header({ unit, location, onImport, importDisabled, role, vaultUnlocked,
         </div>
         {onAudit && <button className="btn btn-ghost" onClick={onAudit}>Audit Log</button>}
         {vaultUnlocked && onLock && <button className="btn btn-ghost" onClick={onLock} title="Lock the encrypted database">🔒 Lock</button>}
+        {onConnect && <button className="btn btn-ghost icac-ids-btn" onClick={onConnect} title="Connect to the ICAC Data System">🌐 Connect to IDS</button>}
         <button className="btn btn-primary" onClick={onImport} disabled={importDisabled}>Import CyberTips</button>
       </div>
     </div>

@@ -27,7 +27,9 @@ export type AuditAction =
   | "export"
   | "tip.edit"
   | "role.change"
-  | "audit.clear";
+  | "audit.clear"
+  | "ids.download"
+  | "ids.ingest";
 
 export interface AuditActor {
   name: string;
@@ -122,4 +124,6 @@ export const AUDIT_LABELS: Record<AuditAction, string> = {
   "tip.edit": "Tip edited",
   "role.change": "Access role changed",
   "audit.clear": "Audit log cleared",
+  "ids.download": "IDS download captured",
+  "ids.ingest": "IDS batch ingested",
 };
