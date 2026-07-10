@@ -104,18 +104,23 @@ function aggregateIdentifiers(parties: PartyBlock[], fullText: string): Identifi
     ids.esp_user_ids.push(...p.esp_user_ids);
     ids.ip_addresses.push(...p.ips.map((o) => o.ip));
   }
-  // Generic sweep to catch identifiers outside party blocks.
-  ids.emails.push(...collect(fullText, RE.email).map(normEmail));
-  ids.ip_addresses.push(...collect(fullText, RE.ipv4), ...collect(fullText, RE.ipv6));
-  ids.phone_numbers.push(...collect(fullText, RE.phone).map(normPhone));
-
-  ids.emails = dedupe(ids.emails);
+  // NOTE: we intentionally do NOT sweep the whole document for emails/IPs/phones.
+  // Section B–D and footers contain NCMEC/law-enforcement/ESP contact identifiers
+  // (e.g. @ncmec.org, @lapd.online, ESP records URLs) that are NOT suspect data.
+  // Party (Suspect/Recipient) blocks give clean, attributable identifiers.
+  ids.emails = dedupe(ids.emails).filter(isSuspectEmail);
   ids.usernames = dedupe(ids.usernames);
   ids.phone_numbers = dedupe(ids.phone_numbers);
   ids.esp_user_ids = dedupe(ids.esp_user_ids);
   ids.ip_addresses = dedupe(ids.ip_addresses);
   ids.device_ids = extractDeviceIds(fullText);
   return ids;
+}
+
+/** Reject organizational / boilerplate contact emails, keep suspect data. */
+const ORG_EMAIL_DOMAINS = /@(ncmec\.org|.*\.gov|.*\.online|.*lawenforcement.*|.*records.*)$/i;
+function isSuspectEmail(e: string): boolean {
+  return !ORG_EMAIL_DOMAINS.test(e);
 }
 
 function parsePriorReports(text: string): string[] {

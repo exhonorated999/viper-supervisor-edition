@@ -2,31 +2,31 @@
   {
     "content": "icac/config.ts — enabled flag + location label (localStorage) + change event",
     "id": "P1-1",
-    "status": "in_progress"
+    "status": "completed"
   },
   {
     "content": "icac/storage: idb.ts kv + IcacStorage interface + fsaccess + indexeddb adapters",
     "id": "P1-2",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "Settings.tsx — Optional Modules panel: ICAC toggle + storage-location picker",
     "id": "P1-3",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "App.tsx — gated ICAC nav tab + route; icons.tsx IconIcac",
     "id": "P1-4",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "icac/Icac.tsx — dashboard shell (header + storage status + empty state)",
     "id": "P1-5",
-    "status": "pending"
+    "status": "completed"
   },
   {
     "content": "styles.css ICAC bits; tsc -b + vite build clean; verify in browser",
     "id": "P1-6",
-    "status": "pending"
+    "status": "completed"
   }
 ]

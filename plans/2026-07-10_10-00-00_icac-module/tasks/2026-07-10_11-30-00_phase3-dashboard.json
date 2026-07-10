@@ -1,0 +1,32 @@
+[
+  {
+    "content": "icac/derive.ts — deriveDashboard(tips): tiles, timeline, heatmap, provider intel, linker, donut, recent, alerts",
+    "id": "P3-1",
+    "status": "in_progress"
+  },
+  {
+    "content": "icac/service.ts — store load/add/dedupe/persist + subscribe (wraps storage adapter)",
+    "id": "P3-2",
+    "status": "pending"
+  },
+  {
+    "content": "icac/ImportDialog.tsx — minimal drag/select → ingest → persist → refresh",
+    "id": "P3-3",
+    "status": "pending"
+  },
+  {
+    "content": "icac/Icac.tsx — full dark dashboard (7 tiles + timeline + heatmap + provider + linker + recent + donut + alerts)",
+    "id": "P3-4",
+    "status": "pending"
+  },
+  {
+    "content": "styles.css — ICAC dashboard grid, tiles, heatmap, tables, donut, alerts",
+    "id": "P3-5",
+    "status": "pending"
+  },
+  {
+    "content": "tsc -b + vite build clean; import real sample PDFs and verify dashboard populates",
+    "id": "P3-6",
+    "status": "pending"
+  }
+]
