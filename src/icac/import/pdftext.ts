@@ -3,11 +3,16 @@
 // the same reconstruction validated by scripts/icac-parse-check.mts in Node.
 // ---------------------------------------------------------------------------
 
+// Install the Uint8Array hex/base64 shim on the MAIN thread too (cheap, and
+// guards any future main-thread pdf.js code path on Electron 33 / Chromium 130).
+import "../../polyfills/uint8-hex-base64";
 import * as pdfjs from "pdfjs-dist";
-// Vite resolves this to a hashed asset URL for the worker module.
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+// Custom worker wrapper that shims Uint8Array.toHex/fromBase64 in the worker
+// scope before pdf.js loads. pdf.js v6 calls these methods, which are absent in
+// Electron 33's Chromium 130 — see src/polyfills/uint8-hex-base64.ts.
+import PdfWorker from "./pdf-worker?worker";
 
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+pdfjs.GlobalWorkerOptions.workerPort = new PdfWorker();
 
 /** Thrown when a PDF needs a password we don't have — the UI prompts the user. */
 export class PasswordRequiredError extends Error {
