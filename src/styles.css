@@ -1681,3 +1681,39 @@ textarea.input {
   border-radius: 6px; padding: 9px 12px;
 }
 .icac-export-ok { color: var(--green); font-size: 13px; margin-top: 10px; }
+
+/* Phase 7 — security (encryption / RBAC / audit) */
+.btn-danger { background: rgba(239,83,80,0.12); border: 1px solid rgba(239,83,80,0.45); color: #ff8a85; }
+.btn-danger:hover:not(:disabled) { background: rgba(239,83,80,0.2); border-color: var(--red); }
+
+/* Vault unlock gate */
+.icac-vault-gate { text-align: center; padding: 48px 24px; max-width: 520px; margin: 40px auto; }
+.icac-vault-lock { font-size: 40px; margin-bottom: 12px; }
+.icac-vault-form { display: flex; gap: 8px; justify-content: center; margin-top: 18px; }
+.icac-vault-input {
+  background: var(--panel-2, #14161c); color: var(--text);
+  border: 1px solid var(--border, #2a2f3a); border-radius: 8px;
+  padding: 8px 12px; font-size: 13px; min-width: 220px;
+}
+.icac-vault-input:focus { outline: none; border-color: var(--cyan); }
+
+/* Read-only role chip in the header */
+.icac-role-chip {
+  font-size: 10.5px; letter-spacing: 0.6px; font-weight: 700; color: #ffcf8a;
+  background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.4);
+  border-radius: 999px; padding: 3px 9px;
+}
+
+/* Security section in settings */
+.icac-sec-block { border: 1px solid var(--border-soft); border-radius: 10px; padding: 12px 14px; margin-top: 10px; }
+.icac-sec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.icac-sec-title { font-size: 13.5px; color: #fff; font-weight: 600; }
+.icac-sec-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.icac-sec-form .icac-vault-input { min-width: 180px; flex: 1 1 180px; }
+.icac-role-toggle { display: inline-flex; gap: 0; margin-top: 10px; border: 1px solid var(--border, #2a2f3a); border-radius: 8px; overflow: hidden; }
+.icac-role-opt { background: transparent; color: var(--text-dim); border: none; padding: 7px 16px; font-size: 12.5px; cursor: pointer; }
+.icac-role-opt.sel { background: rgba(0,183,195,0.14); color: #fff; }
+
+/* Audit log viewer */
+.icac-audit-modal { width: min(760px, 96vw); }
+.icac-audit-wrap { max-height: 52vh; overflow: auto; }

@@ -1,0 +1,32 @@
+[
+  {
+    "content": "types.ts: VaultEnvelope + StoredDoc; storage adapters read/write StoredDoc (type only)",
+    "id": "P7-1",
+    "status": "completed"
+  },
+  {
+    "content": "crypto/vault.ts: PBKDF2→AES-256-GCM vault (pure primitives + session/config layer, pub/sub)",
+    "id": "P7-2",
+    "status": "completed"
+  },
+  {
+    "content": "audit.ts: local append-only audit log (idb-backed, capped, pub/sub)",
+    "id": "P7-3",
+    "status": "completed"
+  },
+  {
+    "content": "config.ts: ICAC access role (command/readonly); service.ts vault encrypt/decrypt + migrate + audit hooks",
+    "id": "P7-4",
+    "status": "completed"
+  },
+  {
+    "content": "UI: VaultGate unlock, AuditDialog, IcacSettings (encryption+role+audit); gate Import/Assign/Export by role+lock; CSS",
+    "id": "P7-5",
+    "status": "completed"
+  },
+  {
+    "content": "Verify: vault crypto smoke-test (node), tsc -b + vite build clean",
+    "id": "P7-6",
+    "status": "completed"
+  }
+]

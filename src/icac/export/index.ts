@@ -10,6 +10,7 @@ import { buildCsv } from "./csv";
 import { buildJson } from "./json";
 import { buildXlsx } from "./xlsx";
 import { buildPdf } from "./pdf";
+import { logAudit } from "../audit";
 
 export type ExportFormat = "csv" | "xlsx" | "json" | "pdf";
 export type { ExportScope } from "./rows";
@@ -64,5 +65,6 @@ export async function runExport(req: ExportRequest): Promise<ExportResult> {
   }
 
   download(blob, filename);
+  void logAudit("export", `${req.format.toUpperCase()} · scope=${req.scope} · ${scoped.length} tips → ${filename}`);
   return { filename, count: scoped.length };
 }

@@ -7,7 +7,25 @@
 
 const ENABLED_KEY = "viper.supervisor.icac.enabled";
 const LOCATION_KEY = "viper.supervisor.icac.location";
+const ROLE_KEY = "viper.supervisor.icac.role";
 const EVENT = "icac:config";
+
+/** ICAC access mode (Phase 7 RBAC). command = full; readonly = view-only. */
+export type IcacRole = "command" | "readonly";
+
+export function getIcacRole(): IcacRole {
+  try { return localStorage.getItem(ROLE_KEY) === "readonly" ? "readonly" : "command"; } catch { return "command"; }
+}
+
+export function setIcacRole(role: IcacRole): void {
+  try { localStorage.setItem(ROLE_KEY, role); } catch { /* ignore */ }
+  emit();
+}
+
+/** Whether the current role may perform mutating actions (import/assign/export). */
+export function canMutate(): boolean {
+  return getIcacRole() === "command";
+}
 
 export function isIcacEnabled(): boolean {
   try { return localStorage.getItem(ENABLED_KEY) === "1"; } catch { return false; }

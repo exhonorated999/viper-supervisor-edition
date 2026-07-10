@@ -9,6 +9,7 @@
 
 import { lanClient } from "../lan/client";
 import { getTips, updateTip } from "./service";
+import { logAudit } from "./audit";
 import type { Assignment, CyberTip } from "./types";
 
 export interface OnlineInvestigator {
@@ -59,6 +60,7 @@ export async function assignCyberTip(tip: CyberTip, input: AssignInput): Promise
       priority: input.priority,
       note: input.note || "",
     });
+    void logAudit("assign", `CT ${tip.cybertip_number || "(no #)"} → ${input.investigator.name} (${input.priority})`);
   } catch (e) {
     // Roll the local record back so the queue reflects reality.
     tip.assignment = prev;
@@ -92,6 +94,7 @@ export function wireAssignmentEvents(): () => void {
       note,
     };
     void updateTip(tip);
+    void logAudit("assign.ack", `CT ${tip.cybertip_number || "(no #)"} acknowledged${p.caseNumber ? ` · case ${p.caseNumber}` : ""}`);
   });
   return () => { wired = false; off(); };
 }

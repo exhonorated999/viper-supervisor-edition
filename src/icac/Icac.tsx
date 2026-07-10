@@ -4,13 +4,18 @@ import {
   PieChart, Pie, Cell,
 } from "recharts";
 import { getIcacLocationLabel } from "./config";
+import { getIcacRole, onIcacConfigChange } from "./config";
 import { loadIcacIndex, getTips, onIcacDataChange } from "./service";
 import { deriveDashboard, type DashboardData, type HeatColumn } from "./derive";
 import type { CyberTip } from "./types";
 import ImportDialog from "./ImportDialog";
 import AssignDialog from "./AssignDialog";
 import ExportDialog from "./ExportDialog";
+import VaultGate from "./VaultGate";
+import AuditDialog from "./AuditDialog";
 import { wireAssignmentEvents } from "./assign";
+import { vaultState, onVaultChange, lock } from "./crypto/vault";
+import { logAudit } from "./audit";
 import { dataService } from "../data/service";
 
 const DONUT_COLORS = ["#00b7c3", "#0078d4", "#ef5350", "#ffc107", "#4caf50", "#8b5cf6", "#ec4899"];
@@ -22,20 +27,38 @@ export default function Icac() {
   const [showImport, setShowImport] = useState(false);
   const [assignTip, setAssignTip] = useState<CyberTip | null>(null);
   const [showExport, setShowExport] = useState(false);
+  const [showAudit, setShowAudit] = useState(false);
+  const [vault, setVault] = useState(vaultState());
+  const [role, setRole] = useState(getIcacRole());
   const [now, setNow] = useState(Date.now());
 
   const unit = dataService.getIdentity().unit || "Command Unit";
+  const readonly = role === "readonly";
 
   useEffect(() => {
     let alive = true;
     setLocation(getIcacLocationLabel());
     const offAck = wireAssignmentEvents();
+    const off = onIcacDataChange(() => { setTips([...getTips()]); setNow(Date.now()); });
+    const offVault = onVaultChange(() => { if (alive) setVault(vaultState()); });
+    const offCfg = onIcacConfigChange(() => { if (alive) { setRole(getIcacRole()); setLocation(getIcacLocationLabel()); } });
+    return () => { alive = false; off(); offAck(); offVault(); offCfg(); };
+  }, []);
+
+  // Load (or reload) the store on mount and whenever the vault unlocks.
+  // While locked, the gate renders instead — no load is attempted.
+  useEffect(() => {
+    if (vault === "locked") { setLoading(false); return; }
+    let alive = true;
+    setLoading(true);
     loadIcacIndex(true)
       .then(() => { if (alive) { setTips(getTips()); setNow(Date.now()); } })
+      .catch(() => {})
       .finally(() => { if (alive) setLoading(false); });
-    const off = onIcacDataChange(() => { setTips([...getTips()]); setNow(Date.now()); });
-    return () => { alive = false; off(); offAck(); };
-  }, []);
+    return () => { alive = false; };
+  }, [vault]);
+
+  const doLock = () => { lock(); void logAudit("vault.lock"); };
 
   const data = useMemo<DashboardData>(() => deriveDashboard(tips, now), [tips, now]);
 
@@ -67,9 +90,20 @@ export default function Icac() {
 
   return (
     <>
-      <Header unit={unit} location={location} onImport={() => setShowImport(true)} />
+      <Header
+        unit={unit}
+        location={location}
+        onImport={() => setShowImport(true)}
+        importDisabled={readonly || vault === "locked"}
+        role={role}
+        vaultUnlocked={vault === "unlocked"}
+        onLock={doLock}
+        onAudit={() => setShowAudit(true)}
+      />
 
-      {loading ? (
+      {vault === "locked" ? (
+        <VaultGate onUnlocked={() => setVault(vaultState())} />
+      ) : loading ? (
         <div className="panel icac-empty"><div className="icac-empty-sub">Loading intelligence database…</div></div>
       ) : (
         <div className="icac-dash">
@@ -168,7 +202,7 @@ export default function Icac() {
                             <td className="ic-dim ic-ellipsis" title={a?.assigned_to || ""}>{a?.assigned_to || "—"}</td>
                             <td><span className={`status-chip ${chip}`}>{st}</span></td>
                             <td style={{ textAlign: "right" }}>
-                              <button className="btn btn-ghost btn-sm" onClick={() => setAssignTip(t)}>
+                              <button className="btn btn-ghost btn-sm" onClick={() => setAssignTip(t)} disabled={readonly}>
                                 {a?.assigned_to ? "Reassign" : "Assign"}
                               </button>
                             </td>
@@ -200,11 +234,12 @@ export default function Icac() {
                 <button
                   className="btn btn-primary"
                   onClick={() => setShowExport(true)}
-                  disabled={!tips.length}
+                  disabled={!tips.length || readonly}
                 >
                   Open Export Center
                 </button>
                 {!tips.length && <div className="ic-soon-note">Import CyberTips to enable export.</div>}
+                {readonly && tips.length > 0 && <div className="ic-soon-note">Read-only access — export disabled.</div>}
               </div>
             </Panel>
           </div>
@@ -294,6 +329,8 @@ export default function Icac() {
           onClose={() => setShowExport(false)}
         />
       )}
+
+      {showAudit && <AuditDialog onClose={() => setShowAudit(false)} />}
     </>
   );
 }
@@ -302,7 +339,10 @@ export default function Icac() {
 
 const tooltipStyle = { background: "#1a1f27", border: "1px solid #262d38", borderRadius: 8, color: "#e0e0e0", fontSize: 12 };
 
-function Header({ unit, location, onImport, importDisabled }: { unit: string; location: string | null; onImport: () => void; importDisabled?: boolean }) {
+function Header({ unit, location, onImport, importDisabled, role, vaultUnlocked, onLock, onAudit }: {
+  unit: string; location: string | null; onImport: () => void; importDisabled?: boolean;
+  role?: "command" | "readonly"; vaultUnlocked?: boolean; onLock?: () => void; onAudit?: () => void;
+}) {
   return (
     <div className="topbar">
       <div>
@@ -310,10 +350,13 @@ function Header({ unit, location, onImport, importDisabled }: { unit: string; lo
         <div className="page-sub">Internet Crimes Against Children — Intelligence Center · {unit}</div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {role === "readonly" && <span className="icac-role-chip">READ-ONLY</span>}
         <div className="icac-loc-chip">
           <span className="dot" style={{ background: location ? "var(--green)" : "var(--amber)", boxShadow: location ? "0 0 8px var(--green)" : "none" }} />
           {location || "No storage location"}
         </div>
+        {onAudit && <button className="btn btn-ghost" onClick={onAudit}>Audit Log</button>}
+        {vaultUnlocked && onLock && <button className="btn btn-ghost" onClick={onLock} title="Lock the encrypted database">🔒 Lock</button>}
         <button className="btn btn-primary" onClick={onImport} disabled={importDisabled}>Import CyberTips</button>
       </div>
     </div>

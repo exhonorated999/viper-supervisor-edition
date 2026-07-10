@@ -149,6 +149,28 @@ export interface IcacIndex {
   suspects: SuspectProfile[];
 }
 
+/**
+ * Encrypted-at-rest wrapper (Phase 7). When the vault is enabled, the storage
+ * backend holds this envelope INSTEAD of a plaintext IcacIndex. The ciphertext
+ * is AES-256-GCM (ct||tag) over JSON.stringify(IcacIndex); the KDF salt/iters
+ * live in the local vault config, never here. Never LAN-transmitted.
+ */
+export interface VaultEnvelope {
+  kind: "viper.icac.vault";
+  v: 1;
+  cipher: "AES-256-GCM";
+  iv: string; // hex, 12 bytes
+  ct: string; // hex, ciphertext||tag
+  updated_at: string;
+}
+
+/** What a storage backend actually persists: plaintext index OR encrypted envelope. */
+export type StoredDoc = IcacIndex | VaultEnvelope;
+
+export function isVaultEnvelope(doc: unknown): doc is VaultEnvelope {
+  return !!doc && typeof doc === "object" && (doc as any).kind === "viper.icac.vault";
+}
+
 export function emptyIdentifiers(): Identifiers {
   return {
     ip_addresses: [],

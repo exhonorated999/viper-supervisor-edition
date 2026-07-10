@@ -2,7 +2,7 @@
 // backend (File System Access now, Electron `fs` later) is a drop-in change.
 // ---------------------------------------------------------------------------
 
-import type { IcacIndex } from "../types";
+import type { StoredDoc } from "../types";
 import { fsAccessStorage, fsAccessSupported } from "./fsaccess";
 import { indexedDbStorage } from "./indexeddb";
 
@@ -18,8 +18,10 @@ export interface IcacStorage {
   chooseLocation(): Promise<string>;
   /** Forget the chosen location. */
   clearLocation(): Promise<void>;
-  readIndex(): Promise<IcacIndex>;
-  writeIndex(ix: IcacIndex): Promise<void>;
+  /** Read the stored document — plaintext index OR encrypted envelope (Phase 7). */
+  readIndex(): Promise<StoredDoc>;
+  /** Persist the stored document verbatim (service decides plaintext vs envelope). */
+  writeIndex(doc: StoredDoc): Promise<void>;
 }
 
 let cached: IcacStorage | null = null;

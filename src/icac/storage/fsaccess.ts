@@ -4,7 +4,7 @@
 // permission re-prompt when the browser requires one).
 // ---------------------------------------------------------------------------
 
-import type { IcacIndex } from "../types";
+import type { StoredDoc } from "../types";
 import { emptyIndex } from "../types";
 import { idbGet, idbSet, idbDel } from "./idb";
 import { setIcacLocationLabel } from "../config";
@@ -69,20 +69,20 @@ export const fsAccessStorage: IcacStorage = {
       const fh = await handle.getFileHandle(INDEX_FILE, { create: false });
       const file = await fh.getFile();
       const text = await file.text();
-      return text ? (JSON.parse(text) as IcacIndex) : emptyIndex();
+      return text ? (JSON.parse(text) as StoredDoc) : emptyIndex();
     } catch {
       // File doesn't exist yet.
       return emptyIndex();
     }
   },
 
-  async writeIndex(ix: IcacIndex) {
+  async writeIndex(doc: StoredDoc) {
     const handle = await getHandle();
     if (!handle) throw new Error("No storage location selected.");
     if (!(await ensurePermission(handle))) throw new Error("Folder permission required.");
     const fh = await handle.getFileHandle(INDEX_FILE, { create: true });
     const writable = await fh.createWritable();
-    await writable.write(JSON.stringify({ ...ix, updated_at: new Date().toISOString() }, null, 2));
+    await writable.write(JSON.stringify(doc, null, 2));
     await writable.close();
   },
 };

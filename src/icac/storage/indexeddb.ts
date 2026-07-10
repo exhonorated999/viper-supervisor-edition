@@ -3,7 +3,7 @@
 // never leaves the machine; export/import to a .json file is offered in the UI.
 // ---------------------------------------------------------------------------
 
-import type { IcacIndex } from "../types";
+import type { StoredDoc } from "../types";
 import { emptyIndex } from "../types";
 import { idbGet, idbSet } from "./idb";
 import { setIcacLocationLabel } from "../config";
@@ -24,7 +24,7 @@ export const indexedDbStorage: IcacStorage = {
   },
 
   async hasLocation() {
-    return (await idbGet<IcacIndex>(INDEX_KEY)) != null || this.currentLocation() != null;
+    return (await idbGet<StoredDoc>(INDEX_KEY)) != null || this.currentLocation() != null;
   },
 
   async chooseLocation() {
@@ -38,10 +38,10 @@ export const indexedDbStorage: IcacStorage = {
   },
 
   async readIndex() {
-    return (await idbGet<IcacIndex>(INDEX_KEY)) ?? emptyIndex();
+    return (await idbGet<StoredDoc>(INDEX_KEY)) ?? emptyIndex();
   },
 
-  async writeIndex(ix: IcacIndex) {
-    await idbSet(INDEX_KEY, { ...ix, updated_at: new Date().toISOString() });
+  async writeIndex(doc: StoredDoc) {
+    await idbSet(INDEX_KEY, doc);
   },
 };
