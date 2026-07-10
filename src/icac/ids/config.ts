@@ -21,7 +21,7 @@ export interface IdsConfig {
 }
 
 const DEFAULTS: IdsConfig = {
-  url: "",
+  url: "https://www.icacdatasystem.com/landing/login",
   username: "",
   password: "",
   autofill: true,
