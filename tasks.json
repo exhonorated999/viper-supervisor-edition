@@ -1,0 +1,27 @@
+[
+  {
+    "content": "Make LAN node key/trust/audit paths env-overridable (server.mjs)",
+    "id": "1",
+    "status": "completed"
+  },
+  {
+    "content": "Add esbuild bundle step: lan-node → single CJS sidecar (scripts/build-lan-node.mjs + npm script)",
+    "id": "2",
+    "status": "completed"
+  },
+  {
+    "content": "Spawn LAN node from packaged Electron main via utilityProcess (main.cjs), lifecycle-managed",
+    "id": "3",
+    "status": "completed"
+  },
+  {
+    "content": "Ship node bundle as extraResources + run build:lan in dist/pack/release (electron-builder.yml, package.json)",
+    "id": "4",
+    "status": "completed"
+  },
+  {
+    "content": "Rebuild NSIS installer with all fixes to C:/viper-build/release and verify (node self-hosts on 7071)",
+    "id": "5",
+    "status": "completed"
+  }
+]

@@ -24,6 +24,14 @@ files:
   - electron/**/*
   - package.json
 
+# The LAN node ships as a single bundled CJS sidecar (scripts/build-lan-node.mjs
+# → lan-dist/server.cjs) placed OUTSIDE the asar (native child processes can't
+# execute from within asar). The packaged main process spawns it on launch so
+# the installed app self-hosts the LAN node on 7071 — no separate `npm run lan`.
+extraResources:
+  - from: lan-dist/server.cjs
+    to: lan-node/server.cjs
+
 # Deterministic, offline packaging.
 npmRebuild: false
 electronCompile: false

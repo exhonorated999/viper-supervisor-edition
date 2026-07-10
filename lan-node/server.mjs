@@ -35,11 +35,20 @@ import {
 } from "./crypto.mjs";
 import { buildDataset, liveEventPool } from "./dataset.mjs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Resolve this file's directory in BOTH modes: run directly as ESM (npm run
+// lan → import.meta.url is a valid file URL) and bundled to CJS for the packaged
+// sidecar (esbuild leaves import.meta empty → fall back to cwd; the packaged
+// app overrides all file paths via LAN_*_FILE env vars anyway).
+const __dirname = (() => {
+  try {
+    if (import.meta && import.meta.url) return path.dirname(fileURLToPath(import.meta.url));
+  } catch { /* bundled CJS */ }
+  return process.cwd();
+})();
 
 const PORT = Number(process.env.LAN_PORT) || 7071;
 const SERVER_ID = "VIPER-NODE-01";
-const AUDIT_FILE = path.join(__dirname, "audit.log.jsonl");
+const AUDIT_FILE = process.env.LAN_AUDIT_FILE || path.join(__dirname, "audit.log.jsonl");
 const NODE_KEY_FILE = process.env.LAN_NODE_KEY_FILE || path.join(__dirname, "node-key.json");
 const TRUST_FILE = process.env.LAN_TRUST_FILE || path.join(__dirname, "trust-store.json");
 

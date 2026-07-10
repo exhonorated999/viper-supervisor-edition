@@ -12,3 +12,4 @@ lan-node/trust-store.json
 scripts/_*.txt 
 dist-electron
 release
+lan-dist 

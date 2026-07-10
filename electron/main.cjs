@@ -10,7 +10,7 @@
 // ever fed to the existing local ingest pipeline.
 // ---------------------------------------------------------------------------
 
-const { app, BrowserWindow, session, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, session, ipcMain, shell, utilityProcess } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 
@@ -202,6 +202,67 @@ function registerAutoUpdate() {
   });
 }
 
+// --- LAN node sidecar ------------------------------------------------------
+// The packaged app hosts the V.I.P.E.R. LAN node itself so an operator only has
+// to run the installed Supervisor .exe — no separate `npm run lan`, no dev/web
+// shell. Investigator devices (Project VIPER) then reach it on ws://<host>:7071
+// to push stats/case-status/OPS plans and receive CyberTip assignments.
+//
+// This ONLY runs when app.isPackaged. In dev the node is started by
+// `npm run desktop` (concurrently), so spawning here would double-bind 7071.
+// The node is the bundled CJS sidecar (see scripts/build-lan-node.mjs), shipped
+// via electron-builder extraResources to resources/lan-node/server.cjs.
+let lanProc = null;
+
+function lanNodeStateDir() {
+  // Keys / trust / audit live in userData so they persist and stay writable
+  // regardless of where the app was installed (incl. a USB drive).
+  const dir = path.join(app.getPath("userData"), "lan-node");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function startLanNode() {
+  if (!app.isPackaged) return; // dev: concurrently runs `npm run lan`
+  if (lanProc) return;
+
+  const scriptPath = path.join(process.resourcesPath, "lan-node", "server.cjs");
+  if (!fs.existsSync(scriptPath)) {
+    console.error("[lan] sidecar not found at", scriptPath, "— node will not start");
+    return;
+  }
+
+  const stateDir = lanNodeStateDir();
+  const env = {
+    ...process.env,
+    LAN_NODE_KEY_FILE: path.join(stateDir, "node-key.json"),
+    LAN_TRUST_FILE: path.join(stateDir, "trust-store.json"),
+    LAN_AUDIT_FILE: path.join(stateDir, "audit.log.jsonl"),
+  };
+
+  try {
+    lanProc = utilityProcess.fork(scriptPath, [], { env, stdio: "pipe", serviceName: "viper-lan-node" });
+    lanProc.stdout?.on("data", (d) => process.stdout.write(`[lan] ${d}`));
+    lanProc.stderr?.on("data", (d) => process.stderr.write(`[lan] ${d}`));
+    lanProc.on("exit", (code) => {
+      // EADDRINUSE (another instance / a dev node already owns 7071) is
+      // non-fatal — the app keeps working against whatever node holds the port.
+      console.warn(`[lan] sidecar exited (code ${code})`);
+      lanProc = null;
+    });
+    console.log("[lan] sidecar started:", scriptPath);
+  } catch (e) {
+    console.error("[lan] failed to start sidecar:", e);
+    lanProc = null;
+  }
+}
+
+function stopLanNode() {
+  if (!lanProc) return;
+  try { lanProc.kill(); } catch { /* ignore */ }
+  lanProc = null;
+}
+
 // --- window ----------------------------------------------------------------
 
 function resolveRendererUrl() {
@@ -240,6 +301,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  startLanNode();
   attachDownloadCapture();
   registerIpc();
   registerAutoUpdate();
@@ -249,6 +311,8 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+app.on("before-quit", () => { isQuitting = true; stopLanNode(); });
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
