@@ -4,16 +4,29 @@
 Law-enforcement command-level oversight platform that **partially integrates** with the user's
 existing **Project Viper** investigator app. "Partially integrate" = **share data over LAN**
 (stats, case status, OPS plans). NO case content/evidence/media ever crosses the wire.
+**Local-first, offline-capable, NO cloud** (no Railway/hosting). Distribution = local installer, not a deploy.
 
 ## Two repos (Windows, cmd.exe)
 1. **Supervisor Edition** — `C:\Users\JUSTI\Workspace\viper_supervisor_edition`
    - Vite + React 18 + TS + Recharts. Dev port 3061 (APP_PORT). Branch: master.
-   - **Now DUAL-MODE**: plain web build (`npm run dev` / start.bat) AND Electron desktop shell
+   - **DUAL-MODE**: plain web build (`npm run dev` / start.bat) AND Electron desktop shell
      (`npm run desktop` / start-desktop.bat). vite `base:"./"` so dist loads over file://.
    - `npm run dev:all` = LAN node + web. `npm run lan` = node. `npm run dev` = web.
    - **Electron desktop**: `electron/main.cjs` + `electron/preload.cjs` (CJS despite type:module).
      `main` field points at main.cjs. `desktop` script = concurrently lan + vite(APP_PORT=3061) +
-     wait-on tcp:3061 + electron (ELECTRON_RENDERER_URL). devDeps added: electron@33, wait-on, cross-env.
+     wait-on tcp:3061 + electron (ELECTRON_RENDERER_URL). devDeps: electron@33, wait-on, cross-env.
+   - **Packaging (electron-builder, commit master d82e0cf)**: `electron-builder.yml` → Windows
+     `nsis` installer (oneClick:false, perMachine:false, allowToChangeInstallationDirectory:true —
+     USB-installable) + `portable` single-exe (run-from-USB). UNSIGNED prototype (no cert). Scripts:
+     `npm run dist` (nsis+portable), `npm run pack:dir` (unpacked). Files packed = dist + electron +
+     package.json only (renderer pre-bundled; main uses Electron/Node builtins → no node_modules).
+     Verified: both installers built (~97 MB each), packaged exe boots & loads dist via file://.
+   - **CRITICAL build quirk**: packaging OUTPUT under `C:\Users\JUSTI\Workspace` fails with
+     `EPERM rename ...win-unpacked` (OneDrive sync / EDR locks the extracted electron.exe mid-rename).
+     FIX baked into scripts: `-c.directories.output=C:/viper-build/release` (non-profile path).
+     Artifacts land in `C:\viper-build\release\`. (Alt fix: admin Defender/OneDrive exclusion for repo.)
+   - **NOT wired**: no auto-update feed (offline requirement — updates = hand over new installer).
+     Packaged app does NOT yet spawn the LAN node (still separate `npm run lan`) — follow-up if needed.
 2. **Project Viper (investigator)** — `C:\Users\JUSTI\Workspace\VIPER`
    - Electron app v3.9.5. Classic scripts + Tailwind (`viper-*`), data in localStorage.
    - Module pattern: `modules/<name>/<name>-main.js` (+ `registerIpc(ipcMain)`) + `<name>-ui.js`.
@@ -32,7 +45,7 @@ Verified: crypto 11/11, E2E 13/13.
 - Phase 7 Security: PBKDF2(210k)→AES-256-GCM vault (crypto/vault.ts), idb audit log (audit.ts),
   RBAC command/readonly (config.ts). Verified vault 7/7, export 12/12.
 
-### ICAC Data System (IDS) tray — NEW (commit master 8469e78)
+### ICAC Data System (IDS) tray — (commit master 8469e78)
 - Purpose: connect to IDS (agency cybertip download portal) from inside the app, capture ZIP
   downloads straight into a staging area, then **batch ingest+parse** — skipping the OS Downloads folder.
 - **Requires Electron desktop** for the embedded browser (plain browsers block iframing IDS +
@@ -56,9 +69,13 @@ Verified: crypto 11/11, E2E 13/13.
 ## Prototype caveats
 - Single shared LAN node on localhost. TOFU pinning, raw ws:// (app-layer ECDH+pinning). Keys in
   localStorage/userData JSON. OPS plan PDF = one-page summary. IDS creds stored unencrypted (by choice).
+  Installers unsigned (SmartScreen warns). No auto-update.
 
 ## Conventions / safety
 - Windows PTY noisy — redirect cmd output to a temp file then `type`. LAN node NOT hot-reload (restart).
 - Vite dev + Electron renderer hot-reload. Electron main/preload changes need electron restart.
-- Gitignored: lan-node audit/keys/trust, dist-electron, release, scripts/_*.txt. userData ids-staging is
-  outside repo. Feature branch for VIPER repo; never push without asking. Don't read/print secrets/keys.
+- **Stop the dev-server file watcher before packaging** if outputting into the repo (avoids EPERM); the
+  scripts already output to C:/viper-build/release to sidestep it.
+- Gitignored: lan-node audit/keys/trust, dist-electron, release, scripts/_*.txt. userData ids-staging +
+  C:\viper-build are outside repo. Feature branch for VIPER repo; never push without asking. Don't
+  read/print secrets/keys.

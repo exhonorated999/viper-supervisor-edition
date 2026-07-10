@@ -36,6 +36,10 @@ win:
     - target: portable
       arch:
         - x64
+  # UNSIGNED prototype: electron-updater must NOT try to verify an Authenticode
+  # publisher chain (there is no cert). VIPER ships this `true` with a real cert;
+  # flip back to true once a code-signing certificate is wired in.
+  verifyUpdateCodeSignature: false
 
 nsis:
   oneClick: false
@@ -45,7 +49,19 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: VIPER Supervisor
-  artifactName: ${productName}-Setup-${version}.exe
+  artifactName: VIPER-Supervisor-Edition-Setup-${version}.${ext}
 
 portable:
-  artifactName: ${productName}-Portable-${version}.exe
+  artifactName: VIPER-Supervisor-Edition-Portable-${version}.${ext}
+
+# ─── Auto-update / distribution feed (mirrors Project VIPER) ───
+# electron-updater consumes latest.yml + the NSIS installer from GitHub
+# Releases. Publish with `npm run release` (needs a GH_TOKEN with repo scope).
+# NOTE: create this repo on GitHub first — releases for Supervisor Edition must
+# live in their OWN repo (sharing VIPER's repo would collide latest.yml).
+publish:
+  provider: github
+  owner: exhonorated999
+  repo: viper-supervisor-edition
+  releaseType: release
+

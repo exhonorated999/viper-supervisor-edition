@@ -15,9 +15,11 @@
     "electron": "electron .",
     "desktop": "concurrently -k -n lan,web,app -c cyan,blue,magenta \"npm run lan\" \"cross-env APP_PORT=3061 vite\" \"wait-on tcp:127.0.0.1:3061 && cross-env ELECTRON_RENDERER_URL=http://localhost:3061 electron .\"",
     "pack:dir": "npm run build && electron-builder --dir -c.directories.output=C:/viper-build/release",
-    "dist": "npm run build && electron-builder --win nsis portable -c.directories.output=C:/viper-build/release"
+    "dist": "npm run build && electron-builder --win nsis portable -c.directories.output=C:/viper-build/release",
+    "release": "npm run build && electron-builder --win nsis portable -c.directories.output=C:/viper-build/release --publish always"
   },
   "dependencies": {
+    "electron-updater": "^6.8.3",
     "jszip": "^3.10.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.1.200",

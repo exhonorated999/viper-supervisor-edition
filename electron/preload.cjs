@@ -32,3 +32,17 @@ contextBridge.exposeInMainWorld("viperIDS", {
     return () => ipcRenderer.removeListener("ids:staged", handler);
   },
 });
+
+// Auto-update bridge (mirrors Project VIPER's electronAPI update surface).
+contextBridge.exposeInMainWorld("viperUpdate", {
+  isElectron: true,
+  getVersion: () => ipcRenderer.invoke("app-version"),
+  check: () => ipcRenderer.invoke("update-check"),
+  download: () => ipcRenderer.invoke("update-download"),
+  install: () => ipcRenderer.invoke("update-install"),
+  onStatus: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on("update-status", handler);
+    return () => ipcRenderer.removeListener("update-status", handler);
+  },
+});

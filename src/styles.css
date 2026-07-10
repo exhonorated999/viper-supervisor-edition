@@ -1872,3 +1872,17 @@ textarea.input {
   background: rgba(255,193,7,0.07); border: 1px solid rgba(255,193,7,0.25);
   border-radius: 8px; padding: 8px 10px;
 }
+
+/* Application Updates panel (Settings → General) */
+.upd-status-row { margin-top: 12px; min-height: 22px; }
+.upd-text { font-size: 13px; }
+.upd-text.dim { color: var(--text-dim); }
+.upd-text.ok { color: var(--green); }
+.upd-text.cyan { color: var(--cyan); }
+.upd-bar { margin-top: 6px; height: 8px; background: var(--panel-3); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.upd-bar-fill { height: 100%; background: var(--cyan); transition: width 200ms ease; }
+.upd-warn {
+  margin-top: 10px; font-size: 12px; color: var(--text-dim);
+  background: rgba(0,183,195,0.06); border: 1px solid rgba(0,183,195,0.25);
+  border-radius: 8px; padding: 8px 10px;
+}

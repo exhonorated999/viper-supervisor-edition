@@ -14,6 +14,21 @@ const { app, BrowserWindow, session, ipcMain, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 
+// electron-updater: lazy-load, only when packaged. In dev there is no
+// app-update.yml and requiring/using it throws — so the update IPC handlers
+// degrade gracefully to a "dev mode" response, exactly like Project VIPER.
+const DISABLE_AUTOUPDATE = process.env.VIPER_DISABLE_AUTOUPDATE === "1";
+let autoUpdater = null;
+if (!DISABLE_AUTOUPDATE && app.isPackaged) {
+  try {
+    autoUpdater = require("electron-updater").autoUpdater;
+  } catch (e) {
+    console.warn("electron-updater not available:", e.message);
+  }
+}
+
+let isQuitting = false;
+
 const IDS_PARTITION = "persist:ids"; // isolated, persistent session for IDS login
 const STAGING_DIRNAME = "ids-staging";
 const STAGING_INDEX = "_index.json";
@@ -124,6 +139,69 @@ function registerIpc() {
   });
 }
 
+// --- auto-update (electron-updater → GitHub Releases; mirrors VIPER) --------
+
+function sendUpdateStatus(data) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("update-status", data);
+}
+
+function registerAutoUpdate() {
+  // Version lookup works in dev and prod regardless of updater availability.
+  ipcMain.handle("app-version", () => app.getVersion());
+
+  if (!autoUpdater) {
+    const devMsg = { success: false, error: "Auto-updater unavailable (dev mode)." };
+    ipcMain.handle("update-check", () => devMsg);
+    ipcMain.handle("update-download", () => devMsg);
+    ipcMain.handle("update-install", () => devMsg);
+    return;
+  }
+
+  autoUpdater.autoDownload = false;          // user clicks "Download"
+  autoUpdater.autoInstallOnAppQuit = false;  // user clicks "Install & Restart"
+  autoUpdater.allowDowngrade = false;
+
+  app.on("before-quit-for-update", () => { isQuitting = true; });
+
+  autoUpdater.on("checking-for-update", () => sendUpdateStatus({ status: "checking" }));
+  autoUpdater.on("update-available", (info) => sendUpdateStatus({
+    status: "available", version: info.version, releaseDate: info.releaseDate,
+    releaseNotes: info.releaseNotes || "",
+  }));
+  autoUpdater.on("update-not-available", (info) => sendUpdateStatus({ status: "up-to-date", version: info.version }));
+  autoUpdater.on("download-progress", (p) => sendUpdateStatus({
+    status: "downloading", percent: Math.round(p.percent),
+    transferred: p.transferred, total: p.total, bytesPerSecond: p.bytesPerSecond,
+  }));
+  autoUpdater.on("update-downloaded", (info) => {
+    autoUpdater._downloadedFile = info.downloadedFile || null;
+    sendUpdateStatus({ status: "downloaded", version: info.version });
+  });
+  autoUpdater.on("error", (err) => sendUpdateStatus({ status: "error", message: err.message || "Update check failed." }));
+
+  ipcMain.handle("update-check", async () => {
+    try { await autoUpdater.checkForUpdates(); return { success: true }; }
+    catch (err) { return { success: false, error: err.message }; }
+  });
+
+  ipcMain.handle("update-download", async () => {
+    try { await autoUpdater.downloadUpdate(); return { success: true }; }
+    catch (err) { return { success: false, error: err.message }; }
+  });
+
+  ipcMain.handle("update-install", async () => {
+    try {
+      isQuitting = true;
+      // Native Squirrel/NSIS launcher: spawns installer detached, then quits.
+      autoUpdater.quitAndInstall(false, true);
+      setTimeout(() => { try { app.exit(0); } catch { /* ignore */ } }, 3000);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+}
+
 // --- window ----------------------------------------------------------------
 
 function resolveRendererUrl() {
@@ -164,6 +242,7 @@ function createWindow() {
 app.whenReady().then(() => {
   attachDownloadCapture();
   registerIpc();
+  registerAutoUpdate();
   createWindow();
 
   app.on("activate", () => {
