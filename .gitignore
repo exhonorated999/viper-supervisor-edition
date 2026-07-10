@@ -9,3 +9,4 @@ dist-ssr
 lan-node/audit.log.jsonl
 lan-node/node-key.json
 lan-node/trust-store.json
+scripts/_*.txt 

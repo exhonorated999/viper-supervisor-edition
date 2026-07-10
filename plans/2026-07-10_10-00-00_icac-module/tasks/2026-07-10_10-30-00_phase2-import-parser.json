@@ -1,0 +1,32 @@
+[
+  {
+    "content": "Install deps: jszip, pdfjs-dist, tsx (dev)",
+    "id": "P2-1",
+    "status": "completed"
+  },
+  {
+    "content": "icac/types.ts — CyberTip/Identifiers/Contraband/SuspectProfile schemas",
+    "id": "P2-2",
+    "status": "completed"
+  },
+  {
+    "content": "icac/parse: index (detect+dispatch+generic), ncmec.ts, warrant.ts",
+    "id": "P2-3",
+    "status": "completed"
+  },
+  {
+    "content": "Node validation harness: extract text via pdfjs-dist, run parser on 9 samples",
+    "id": "P2-4",
+    "status": "completed"
+  },
+  {
+    "content": "Run harness, iterate regex to full field coverage (6/6 NCMEC high conf)",
+    "id": "P2-5",
+    "status": "completed"
+  },
+  {
+    "content": "Browser pieces: pdftext.ts + zip.ts + ingest.ts (ZIP + loose PDFs); tsc + vite build clean",
+    "id": "P2-6",
+    "status": "completed"
+  }
+]
