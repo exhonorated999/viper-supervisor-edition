@@ -13,6 +13,7 @@
 const { app, BrowserWindow, session, ipcMain, shell, utilityProcess } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
+const { execFile } = require("node:child_process");
 
 // electron-updater: lazy-load, only when packaged. In dev there is no
 // app-update.yml and requiring/using it throws — so the update IPC handlers
@@ -202,6 +203,45 @@ function registerAutoUpdate() {
   });
 }
 
+// --- Windows Firewall inbound rule (one-time) ------------------------------
+// The Supervisor HOSTS the LAN node, so its machine must accept inbound TCP/UDP
+// on 7071 from investigator devices. Windows blocks inbound to an unknown exe by
+// default, which is why loopback works but a peer laptop is refused. We add a
+// single allow rule on first launch (one UAC prompt), then never again. This is
+// the "no IT ticket" path for a normal machine; on locked-down/no-admin fleets
+// the elevation is declined/blocked and an admin applies the rule via GPO.
+const FW_TCP_RULE = "VIPER Supervisor LAN Node (TCP 7071)";
+const FW_UDP_RULE = "VIPER Supervisor LAN Node (UDP 7071)";
+
+function firewallRuleExists() {
+  return new Promise((resolve) => {
+    execFile("netsh", ["advfirewall", "firewall", "show", "rule", `name=${FW_TCP_RULE}`], (err, stdout) => {
+      resolve(!err && /Rule Name:/i.test(String(stdout || "")));
+    });
+  });
+}
+
+async function ensureFirewallRule() {
+  if (process.platform !== "win32" || !app.isPackaged) return;
+  try {
+    if (await firewallRuleExists()) return;
+    // Elevate once (UAC) and add inbound allow rules for TCP + UDP 7071. Pass the
+    // inner script as a Base64 -EncodedCommand to sidestep nested-quote issues.
+    const inner = [
+      `New-NetFirewallRule -DisplayName '${FW_TCP_RULE}' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 7071 -Profile Any -ErrorAction SilentlyContinue`,
+      `New-NetFirewallRule -DisplayName '${FW_UDP_RULE}' -Direction Inbound -Action Allow -Protocol UDP -LocalPort 7071 -Profile Any -ErrorAction SilentlyContinue`,
+    ].join("; ");
+    const enc = Buffer.from(inner, "utf16le").toString("base64");
+    const outer = `Start-Process powershell -Verb RunAs -WindowStyle Hidden -ArgumentList '-NoProfile','-WindowStyle','Hidden','-EncodedCommand','${enc}'`;
+    execFile("powershell", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", outer], (err) => {
+      if (err) console.warn("[lan] firewall rule not added (elevation declined/blocked):", err.message);
+      else console.log("[lan] firewall inbound allow rule ensured for 7071");
+    });
+  } catch (e) {
+    console.warn("[lan] firewall rule setup skipped:", e && e.message);
+  }
+}
+
 // --- LAN node sidecar ------------------------------------------------------
 // The packaged app hosts the V.I.P.E.R. LAN node itself so an operator only has
 // to run the installed Supervisor .exe — no separate `npm run lan`, no dev/web
@@ -301,6 +341,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  ensureFirewallRule();
   startLanNode();
   attachDownloadCapture();
   registerIpc();
