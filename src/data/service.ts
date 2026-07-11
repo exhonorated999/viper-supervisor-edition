@@ -30,7 +30,7 @@ import { lanClient } from "../lan/client";
 import { loadIdentity, saveIdentity } from "./identity";
 import type { SupervisorIdentity } from "./identity";
 import { getDeviceKey, getDeviceIdSync } from "../lan/devicekey";
-import { deriveStatsFromDelivery, deriveCasesFromDigest, deriveWorkloadFromDigest, deriveOpsPlanFromDelivery } from "./derive";
+import { deriveStatsFromDelivery, deriveCasesFromDigest, deriveWorkloadFromDigest, deriveOpsPlanFromDelivery, aggregateMetricValues } from "./derive";
 
 export type { SupervisorIdentity } from "./identity";
 
@@ -82,6 +82,7 @@ type Cache = {
   opsPending?: OpsPlan[];
   opsSigned?: OpsPlan[];
   alerts?: Alert[];
+  metricValues?: Record<string, number>;
 };
 
 let cache: Cache = loadCache();
@@ -256,6 +257,25 @@ export const dataService = {
   },
   getAlerts() {
     return read("get:alerts", "alerts", mockAlerts);
+  },
+
+  /**
+   * Unit-wide metric values ({ catalogKey -> number }) for the configurable
+   * stat cards + Quick Stats panel. Sums the latest stats snapshot per
+   * investigator (see derive.aggregateMetricValues). Falls back to the cached
+   * deliveries when offline; empty object if nothing has been pushed yet.
+   */
+  async getMetricValues(): Promise<Record<string, number>> {
+    await lanClient.waitForConnected(2500);
+    try {
+      const deliveries = await lanClient.request<Delivery[]>("get:deliveries");
+      const values = aggregateMetricValues(deliveries);
+      cache.metricValues = values;
+      persist();
+      return values;
+    } catch {
+      return (cache.metricValues as Record<string, number>) ?? {};
+    }
   },
 
   async getAudit(): Promise<AuditEntry[]> {

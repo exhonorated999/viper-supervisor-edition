@@ -8,6 +8,9 @@ import OpsPlans from "./OpsPlans";
 import Icac from "./icac/Icac";
 import { isIcacEnabled, onIcacConfigChange } from "./icac/config";
 import { dataService } from "./data/service";
+import { isRegistered } from "./data/registration";
+import RegistrationModal from "./RegistrationModal";
+import BugReportModal from "./BugReportModal";
 import type { ConnState } from "./lan/client";
 import {
   IconDashboard,
@@ -19,6 +22,7 @@ import {
   IconSettings,
   IconCheckShield,
   IconIcac,
+  IconBug,
 } from "./icons";
 
 const IconInbox = () => (
@@ -60,6 +64,10 @@ export default function App() {
   const [unread, setUnread] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [icacEnabled, setIcacOn] = useState(isIcacEnabled());
+  // Registration (first-run) + bug report modals.
+  const [showRegister, setShowRegister] = useState<boolean>(() => !isRegistered());
+  const [firstRun, setFirstRun] = useState<boolean>(() => !isRegistered());
+  const [showBug, setShowBug] = useState(false);
 
   // React to the ICAC Optional-Module toggle from Settings.
   useEffect(() => onIcacConfigChange(() => setIcacOn(isIcacEnabled())), []);
@@ -141,6 +149,11 @@ export default function App() {
         </nav>
 
         <LanStatus conn={conn} lastSync={lastSync} queued={queued} />
+
+        <button className="sidebar-bug" onClick={() => setShowBug(true)} title="Report a bug to Intellect">
+          <IconBug size={16} />
+          <span>Report a Bug</span>
+        </button>
       </aside>
 
       <main className="main">
@@ -172,6 +185,21 @@ export default function App() {
           </div>
           <span className="dn-cta">View →</span>
         </div>
+      )}
+
+      {showRegister && (
+        <RegistrationModal
+          firstRun={firstRun}
+          onClose={() => setShowRegister(false)}
+          onRegistered={() => { setShowRegister(false); setFirstRun(false); }}
+        />
+      )}
+
+      {showBug && (
+        <BugReportModal
+          onClose={() => setShowBug(false)}
+          onNeedRegister={() => { setShowBug(false); setFirstRun(false); setShowRegister(true); }}
+        />
       )}
     </div>
   );

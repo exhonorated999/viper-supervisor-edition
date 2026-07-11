@@ -1886,3 +1886,95 @@ textarea.input {
   background: rgba(0,183,195,0.06); border: 1px solid rgba(0,183,195,0.25);
   border-radius: 8px; padding: 8px 10px;
 }
+
+/* =====================  CONFIGURABLE STAT CARDS  ===================== */
+.stat-cards { width: 100%; }
+.metric-card.cfg { display: flex; flex-direction: column; }
+.metric-card.cfg .metric-head {
+  justify-content: space-between;
+  align-items: flex-start;
+  min-height: auto;
+  margin-bottom: 12px;
+  color: var(--text-dim);
+}
+.metric-card.cfg .metric-name {
+  font-size: 13px; font-weight: 500; line-height: 1.3;
+}
+.metric-card.cfg .metric-sub {
+  margin-top: 8px; font-size: 11px; color: var(--text-faint);
+}
+.card-gear-wrap { position: relative; flex: 0 0 auto; }
+.card-gear {
+  background: none; border: none; color: var(--text-faint);
+  padding: 2px; border-radius: 6px; cursor: pointer; display: grid; place-items: center;
+  transition: color var(--t-hover) ease, background var(--t-hover) ease;
+}
+.card-gear:hover { color: var(--cyan); background: rgba(0,183,195,0.1); }
+.metric-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 190px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+}
+
+/* =====================  QUICK STATS BAND  ===================== */
+.quick-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+.quick-tile {
+  position: relative;
+  background: linear-gradient(160deg, var(--panel-2) 0%, var(--panel-3) 100%);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 14px 16px;
+  overflow: hidden;
+}
+.quick-tile::before {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 3px;
+  background: var(--accent, var(--cyan)); opacity: 0.85;
+}
+.quick-tile-label { font-size: 12px; color: var(--text-dim); }
+.quick-tile-val {
+  font-size: 26px; font-weight: 700; color: #fff; line-height: 1.1; margin-top: 6px;
+}
+.quick-tile-sub { font-size: 11px; color: var(--text-faint); margin-top: 4px; }
+
+/* =====================  CONFIGURE MODAL LIST  ===================== */
+.cfg-list { list-style: none; margin: 0; padding: 0; }
+.cfg-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 8px; border-radius: 8px; cursor: pointer;
+  color: var(--text); font-size: 14px;
+  transition: background var(--t-hover) ease;
+}
+.cfg-row:hover { background: var(--panel-2); }
+.cfg-row.on { color: #fff; }
+.cfg-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--cyan); cursor: pointer; }
+
+/* =====================  SIDEBAR BUG REPORT  ===================== */
+.sidebar-bug {
+  margin-top: 12px;
+  display: flex; align-items: center; gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  background: rgba(239, 83, 80, 0.1);
+  border: 1px solid rgba(239, 83, 80, 0.4);
+  color: #ff8a85;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--t-hover) ease, border-color var(--t-hover) ease;
+}
+.sidebar-bug:hover { background: rgba(239, 83, 80, 0.18); border-color: var(--red); }

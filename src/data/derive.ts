@@ -345,3 +345,88 @@ export function deriveTrendFromCases(
       arrests,
     }));
 }
+
+// ---------------------------------------------------------------------------
+// Unit-wide metric values (for the configurable stat cards + Quick Stats).
+//
+// Each investigator's stats push carries (a) the small `headline`/`byStatus`
+// summary it always sent, and (b) — once the investigator app is updated — a
+// full `metrics` map { catalogKey -> number } mirroring their own dashboard.
+// The supervisor sums the LATEST snapshot per investigator into unit totals so
+// the cards reflect the whole unit, not one device. Metrics that predate the
+// push extension are backfilled from the headline/byStatus so the cards still
+// show real Open/Closed/New/Transferred/Inactive numbers today.
+// ---------------------------------------------------------------------------
+
+/** Pull a { key -> number } map out of ONE stats delivery body. */
+export function extractMetricMap(body: any): Record<string, number> {
+  const out: Record<string, number> = {};
+
+  // (a) Full metrics map from an updated investigator push.
+  const m = body?.metrics;
+  if (m && typeof m === "object" && !Array.isArray(m)) {
+    for (const [k, v] of Object.entries(m)) {
+      const n = num(v);
+      if (Number.isFinite(n)) out[k] = (out[k] || 0) + n;
+    }
+  }
+
+  // (b) Backfill core case-flow metrics from the legacy headline/byStatus so
+  //     the cards aren't blank on un-updated investigators.
+  const headline: Array<{ label: string; value: unknown }> = Array.isArray(body?.headline)
+    ? body.headline
+    : [];
+  const byStatus: Array<{ label: string; count: number }> = Array.isArray(body?.byStatus)
+    ? body.byStatus
+    : [];
+  const hv = (re: RegExp): number | undefined => {
+    const row = headlineVal(headline, re);
+    return row ? num(row.value) : undefined;
+  };
+  const setIfAbsent = (key: string, val: number | undefined) => {
+    if (val == null || !Number.isFinite(val)) return;
+    if (out[key] == null) out[key] = val;
+  };
+  setIfAbsent("open_cases", hv(/^open|\bopen\b/i));
+  setIfAbsent("cases_closed", hv(/clos/i));
+  setIfAbsent("new_cases_assigned", hv(/new/i));
+
+  // byStatus buckets → transferred / inactive
+  let transferred = 0;
+  let inactive = 0;
+  byStatus.forEach((r) => {
+    const s = String(r.label || "").toLowerCase();
+    if (/transfer/.test(s)) transferred += num(r.count);
+    if (/inactiv|hold|paus/.test(s)) inactive += num(r.count);
+  });
+  if (transferred) setIfAbsent("transferred_cases", transferred);
+  if (inactive) setIfAbsent("inactive_cases", inactive);
+
+  return out;
+}
+
+/**
+ * Aggregate unit-wide metric values across every investigator's LATEST stats
+ * delivery. `deliveries` is the raw inbox list; only dtype "stats" is used.
+ */
+export function aggregateMetricValues(deliveries: any[]): Record<string, number> {
+  const stats = (Array.isArray(deliveries) ? deliveries : [])
+    .filter((d) => d && d.dtype === "stats" && d.body)
+    .sort((a, b) => String(b.sentAt).localeCompare(String(a.sentAt)));
+
+  // Keep only the most-recent snapshot per sender device.
+  const latestPerSender = new Map<string, any>();
+  for (const d of stats) {
+    const sender = String(d.fromDeviceId || d.from || d.id);
+    if (!latestPerSender.has(sender)) latestPerSender.set(sender, d);
+  }
+
+  const total: Record<string, number> = {};
+  for (const d of latestPerSender.values()) {
+    const map = extractMetricMap(d.body);
+    for (const [k, v] of Object.entries(map)) {
+      total[k] = (total[k] || 0) + v;
+    }
+  }
+  return total;
+}

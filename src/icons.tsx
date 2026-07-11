@@ -47,6 +47,9 @@ export const IconSettings = ({ size = 18, style }: IconProps) => (
 export const IconAudit = ({ size = 18, style }: IconProps) => (
   <svg {...base(size, style)}><path d="M9 3h6l5 5v13H4V3z" /><path d="M9 13l2 2 4-4" /></svg>
 );
+export const IconBug = ({ size = 18, style }: IconProps) => (
+  <svg {...base(size, style)}><rect x="8" y="6" width="8" height="14" rx="4" /><path d="M12 6V4M8.5 8.5 6 6M15.5 8.5 18 6M8 12H4M20 12h-4M8.5 16.5 6 19M15.5 16.5 18 19" /></svg>
+);
 
 // Metric icons
 export const IconFolderOpen = ({ size = 18, style }: IconProps) => (

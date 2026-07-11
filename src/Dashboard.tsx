@@ -22,6 +22,10 @@ import type {
   MetricKey,
 } from "./types";
 import OpsPlanModal from "./OpsPlanModal";
+import StatCards from "./StatCards";
+import QuickStats from "./QuickStats";
+import { getCardPrefs, getQuickStats, onPrefsChange } from "./data/prefs";
+import { generateReport, type ReportKind } from "./reports/generate";
 import {
   IconChevron,
   IconRefresh,
@@ -30,8 +34,6 @@ import {
   IconCuffs,
   IconWarrant,
   IconMoney,
-  IconGun,
-  IconTransfer,
   IconCalendar,
   IconBarChart,
   IconPie,
@@ -40,16 +42,6 @@ import {
   IconClock,
   IconCheckShield,
 } from "./icons";
-
-const METRIC_META: Record<MetricKey, { icon: JSX.Element; accent: string }> = {
-  casesOpened: { icon: <IconFolderOpen />, accent: "var(--blue)" },
-  casesClosed: { icon: <IconFolderCheck />, accent: "var(--green)" },
-  arrests: { icon: <IconCuffs />, accent: "var(--cyan)" },
-  warrantsAuthored: { icon: <IconWarrant />, accent: "var(--amber)" },
-  moneyRecovered: { icon: <IconMoney />, accent: "var(--green)" },
-  gunsRecovered: { icon: <IconGun />, accent: "var(--red)" },
-  transfers: { icon: <IconTransfer />, accent: "var(--cyan)" },
-};
 
 const DONUT_COLORS: Record<string, string> = {
   Open: "#0078D4",
@@ -92,6 +84,8 @@ export default function Dashboard() {
   const [signed, setSigned] = useState<OpsPlan[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [supervisor, setSupervisor] = useState<SupervisorIdentity | null>(null);
+  const [metricValues, setMetricValues] = useState<Record<string, number>>({});
+  const [cardPrefs, setCardPrefs] = useState<string[]>(() => getCardPrefs());
 
   const [selected, setSelected] = useState<MetricKey | null>(null);
   const [modalPlan, setModalPlan] = useState<OpsPlan | null>(null);
@@ -108,6 +102,7 @@ export default function Dashboard() {
     dataService.getSignedOpsPlans().then(setSigned);
     dataService.getAlerts().then(setAlerts);
     dataService.getSupervisor().then(setSupervisor);
+    dataService.getMetricValues().then(setMetricValues);
     setLastSync(Date.now());
   };
 
@@ -141,6 +136,7 @@ export default function Dashboard() {
         dataService.getStats().then(setStats);
         dataService.getCases().then(setCases);
         dataService.getWorkload().then(setWorkload);
+        dataService.getMetricValues().then(setMetricValues);
         setLastSync(Date.now());
         if (d?.dtype === "stats") {
           setFlash(`Stats snapshot received · ${d.from || "investigator"}`);
@@ -158,6 +154,9 @@ export default function Dashboard() {
       offEvent();
     };
   }, []);
+
+  // Reflect card/quick-stats preference changes made from the gear menus.
+  useEffect(() => onPrefsChange(() => setCardPrefs(getCardPrefs())), []);
 
   useEffect(() => {
     if (!flash) return;
@@ -185,6 +184,28 @@ export default function Dashboard() {
       setSigned((s) => [plan, ...s]);
     } else if (plan.status === "Returned") {
       setPending((p) => p.filter((x) => x.id !== plan.id));
+    }
+  };
+
+  const runReport = async (kind: ReportKind) => {
+    if (!stats || !supervisor) return;
+    setFlash(`Generating ${kind === "ops" ? "OPS Plan Log" : kind} report…`);
+    try {
+      const name = await generateReport(kind, {
+        supervisor: { name: supervisor.name, badge: supervisor.badge, unit: supervisor.unit },
+        metricValues,
+        cardKeys: cardPrefs,
+        quickKeys: getQuickStats(),
+        breakdown: stats.breakdown,
+        totalCases: stats.totalCases,
+        workload,
+        cases,
+        opsPending: pending,
+        opsSigned: signed,
+      });
+      setFlash(`Report generated · ${name}`);
+    } catch (e: any) {
+      setFlash(`Report failed · ${String(e?.message || e)}`);
     }
   };
 
@@ -232,37 +253,12 @@ export default function Dashboard() {
         </span>
       </div>
       <div className="metric-row rise" style={{ animationDelay: "60ms" }}>
-        {stats.metrics.length === 0 ? (
-          <div className="panel empty-state">
-            No unit metrics yet. Stats appear here once an investigator pushes a
-            stats snapshot from Project V.I.P.E.R.
-          </div>
-        ) : (
-        <div className="grid">
-          {stats.metrics.map((m) => {
-            const meta = METRIC_META[m.key];
-            return (
-              <button
-                key={m.key}
-                className={`metric-card${selected === m.key ? " selected" : ""}`}
-                style={{ ["--accent" as string]: meta.accent }}
-                onClick={() => setSelected((s) => (s === m.key ? null : m.key))}
-              >
-                <div className="metric-head">
-                  <span className="metric-icon">{meta.icon}</span>
-                  <span>{m.label}</span>
-                </div>
-                <div className="metric-value">{m.value}</div>
-                <div className="metric-delta">
-                  <span className="arrow">{m.deltaDirection === "up" ? "▲" : "▼"}</span>
-                  <span className="pct">{m.delta}</span>
-                  <span>{m.comparison}</span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-        )}
+        <StatCards prefs={cardPrefs} values={metricValues} />
+      </div>
+
+      {/* ---------- QUICK STATS ---------- */}
+      <div className="grid row rise" style={{ animationDelay: "90ms" }}>
+        <QuickStats values={metricValues} />
       </div>
 
       {/* ---------- MID SECTION ---------- */}
@@ -538,12 +534,12 @@ export default function Dashboard() {
             <div className="panel-title">Quick Reports</div>
           </div>
           <div className="report-grid">
-            <button className="report-tile blue"><IconBarChart /><div>Monthly Summary</div></button>
-            <button className="report-tile green"><IconCalendar /><div>YTD Overview</div></button>
-            <button className="report-tile cyan"><IconUserAlert /><div>Investigator Performance</div></button>
-            <button className="report-tile amber"><IconPie /><div>Case Distribution</div></button>
+            <button className="report-tile blue" onClick={() => runReport("monthly")}><IconBarChart /><div>Monthly Summary</div></button>
+            <button className="report-tile green" onClick={() => runReport("ytd")}><IconCalendar /><div>YTD Overview</div></button>
+            <button className="report-tile cyan" onClick={() => runReport("investigator")}><IconUserAlert /><div>Investigator Performance</div></button>
+            <button className="report-tile amber" onClick={() => runReport("distribution")}><IconPie /><div>Case Distribution</div></button>
           </div>
-          <button className="report-wide"><IconWarrant size={18} /> OPS Plan Log</button>
+          <button className="report-wide" onClick={() => runReport("ops")}><IconWarrant size={18} /> OPS Plan Log</button>
         </div>
 
         {/* Digital sign-offs */}

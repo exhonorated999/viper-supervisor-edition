@@ -6,6 +6,8 @@ import AuditLog from "./AuditLog";
 import AlertsLog from "./AlertsLog";
 import IcacSettings from "./icac/IcacSettings";
 import UpdatePanel from "./UpdatePanel";
+import RegistrationModal from "./RegistrationModal";
+import { isRegistered, getRegistration } from "./data/registration";
 
 type SettingsTab = "general" | "audit" | "alerts";
 
@@ -22,6 +24,10 @@ export default function Settings() {
   const [pin, setPin] = useState<string | null>(dataService.getNodePin());
   const [urlDraft, setUrlDraft] = useState<string>(dataService.getNodeUrl());
   const [trusted, setTrusted] = useState<TrustedDevice[]>([]);
+  const [showReg, setShowReg] = useState(false);
+  const [, setRegTick] = useState(0);
+  const registered = isRegistered();
+  const reg = getRegistration();
 
   const dirty = draft.name !== id.name || draft.badge !== id.badge || draft.unit !== id.unit;
 
@@ -87,6 +93,33 @@ export default function Settings() {
           {saved && <span style={{ color: "var(--green)", alignSelf: "center", marginRight: "auto" }}>✓ Saved &amp; re-registered on LAN</span>}
           <button className="btn btn-ghost" onClick={() => setDraft(id)} disabled={!dirty}>Reset</button>
           <button className="btn btn-primary" onClick={saveIdentity} disabled={!dirty}>Save Identity</button>
+        </div>
+      </div>
+
+      {/* Intellect-LE registration */}
+      <div className="panel" style={{ maxWidth: 720, marginTop: 16 }}>
+        <div className="panel-head">
+          <h2 className="panel-title">Intellect-LE Registration</h2>
+          <span className="panel-meta">Enables bug reporting &amp; product updates</span>
+        </div>
+        {registered ? (
+          <dl className="kv">
+            <dt>Status</dt>
+            <dd style={{ color: "var(--green)" }}>✓ Registered</dd>
+            <dt>Agency</dt>
+            <dd>{reg.agency || "—"}</dd>
+            <dt>Agency email</dt>
+            <dd>{reg.email || "—"}</dd>
+          </dl>
+        ) : (
+          <div style={{ color: "var(--amber)", fontSize: 13 }}>
+            Not registered yet — register to enable bug reporting.
+          </div>
+        )}
+        <div className="modal-foot" style={{ paddingRight: 0 }}>
+          <button className="btn btn-ghost" onClick={() => setShowReg(true)}>
+            {registered ? "Update Registration" : "Register"}
+          </button>
         </div>
       </div>
 
@@ -172,6 +205,13 @@ export default function Settings() {
 
       <IcacSettings />
       <UpdatePanel />
+
+      {showReg && (
+        <RegistrationModal
+          onClose={() => setShowReg(false)}
+          onRegistered={() => { setShowReg(false); setRegTick((t) => t + 1); }}
+        />
+      )}
       </>)}
     </>
   );
