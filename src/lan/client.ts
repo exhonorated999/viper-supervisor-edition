@@ -78,13 +78,33 @@ type EventListener = (e: LiveEvent) => void;
 const env = (import.meta as any).env || {};
 const URL_KEY = "viper.supervisor.nodeurl";
 const PIN_KEY = "viper.supervisor.nodepin";
-const DEFAULT_URL = env.VITE_LAN_URL || `ws://${location.hostname}:7071`;
+// In the PACKAGED app the renderer loads over file://, where location.hostname
+// is an empty string — that produced a malformed "ws://:7071" that could never
+// connect to the app's own LAN node. Fall back to loopback in that case.
+const LAN_HOST = location.hostname || "127.0.0.1";
+const DEFAULT_URL = env.VITE_LAN_URL || `ws://${LAN_HOST}:7071`;
 
 const RPC_TIMEOUT = 8000;
 const MAX_BACKOFF = 10000;
 
+function normalizeUrl(u: string | null | undefined): string {
+  const raw = (u || "").trim();
+  if (!raw) return DEFAULT_URL;
+  // Repair empty-host URLs like "ws://:7071" (file:// default leak) and bare
+  // "host:port" / "host" inputs typed by an operator.
+  try {
+    const withScheme = /^wss?:\/\//i.test(raw) ? raw : `ws://${raw}`;
+    const parsed = new URL(withScheme);
+    if (!parsed.hostname) parsed.hostname = LAN_HOST;
+    if (!parsed.port) parsed.port = "7071";
+    return `${parsed.protocol}//${parsed.hostname}:${parsed.port}`;
+  } catch {
+    return DEFAULT_URL;
+  }
+}
+
 function loadUrl(): string {
-  try { return localStorage.getItem(URL_KEY) || DEFAULT_URL; } catch { return DEFAULT_URL; }
+  try { return normalizeUrl(localStorage.getItem(URL_KEY)); } catch { return DEFAULT_URL; }
 }
 function loadPin(): string | null {
   try { return localStorage.getItem(PIN_KEY); } catch { return null; }
@@ -129,7 +149,7 @@ export class LanClient {
   get untrustedReason(): string | null { return this._untrustedReason; }
 
   setNodeUrl(url: string) {
-    const clean = (url || "").trim() || DEFAULT_URL;
+    const clean = normalizeUrl(url);
     try { localStorage.setItem(URL_KEY, clean); } catch { /* ignore */ }
     this.url = clean;
     if (this.wantConnected) this.ws?.close(); // reconnect to new endpoint
