@@ -1,22 +1,63 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { METRIC_CATALOG, metricDef, formatMetricValue } from "./data/metrics";
 import { setCardMetric } from "./data/prefs";
 import { IconSettings } from "./icons";
 
 // A dropdown menu listing every catalog metric; highlights the current one.
+// Rendered through a portal on <body> with fixed positioning so it can never
+// be clipped by an ancestor card's `overflow: hidden` or lose the stacking
+// fight with the cards below it.
 function MetricMenu({
+  anchor,
   selected,
   onPick,
   onClose,
 }: {
+  anchor: HTMLElement;
   selected: string;
   onPick: (key: string) => void;
   onClose: () => void;
 }) {
-  return (
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: -9999, left: -9999 });
+
+  // Position the menu under (or above, if it would overflow the viewport) the
+  // gear button, aligned to its right edge. Measured after layout so we know
+  // the menu's real height.
+  useLayoutEffect(() => {
+    const place = () => {
+      const a = anchor.getBoundingClientRect();
+      const menuW = menuRef.current?.offsetWidth ?? 200;
+      const menuH = menuRef.current?.offsetHeight ?? 240;
+      const gap = 6;
+      let top = a.bottom + gap;
+      // Flip above the button if it would spill past the viewport bottom.
+      if (top + menuH > window.innerHeight - 8) {
+        top = Math.max(8, a.top - gap - menuH);
+      }
+      let left = a.right - menuW; // right-align to the gear
+      left = Math.max(8, Math.min(left, window.innerWidth - menuW - 8));
+      setPos({ top, left });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [anchor]);
+
+  return createPortal(
     <>
       <div className="dropdown-backdrop" onClick={(e) => { e.stopPropagation(); onClose(); }} />
-      <div className="metric-menu" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={menuRef}
+        className="metric-menu"
+        style={{ position: "fixed", top: pos.top, left: pos.left, right: "auto" }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {METRIC_CATALOG.map((m) => (
           <button
             key={m.key}
@@ -27,7 +68,8 @@ function MetricMenu({
           </button>
         ))}
       </div>
-    </>
+    </>,
+    document.body
   );
 }
 
@@ -44,7 +86,8 @@ export default function StatCards({
   values: Record<string, number>;
 }) {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
+  // Anchor element for the open menu's portal positioning.
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
   // Close the open menu on Escape.
   useEffect(() => {
@@ -54,9 +97,10 @@ export default function StatCards({
     return () => window.removeEventListener("keydown", onKey);
   }, [openIdx]);
 
+  const close = () => { setOpenIdx(null); setAnchor(null); };
+
   return (
     <div
-      ref={rootRef}
       className="grid stat-cards"
       style={{ gridTemplateColumns: `repeat(${Math.max(prefs.length, 1)}, 1fr)` }}
     >
@@ -75,15 +119,20 @@ export default function StatCards({
                 <button
                   className="card-gear"
                   title="Change metric"
-                  onClick={() => setOpenIdx((o) => (o === i ? null : i))}
+                  onClick={(e) => {
+                    if (openIdx === i) { close(); return; }
+                    setAnchor(e.currentTarget);
+                    setOpenIdx(i);
+                  }}
                 >
                   <IconSettings size={15} />
                 </button>
-                {openIdx === i && (
+                {openIdx === i && anchor && (
                   <MetricMenu
+                    anchor={anchor}
                     selected={key}
-                    onPick={(k) => { setCardMetric(i, k); setOpenIdx(null); }}
-                    onClose={() => setOpenIdx(null)}
+                    onPick={(k) => { setCardMetric(i, k); close(); }}
+                    onClose={close}
                   />
                 )}
               </div>

@@ -51,6 +51,7 @@ const SERVER_ID = "VIPER-NODE-01";
 const AUDIT_FILE = process.env.LAN_AUDIT_FILE || path.join(__dirname, "audit.log.jsonl");
 const NODE_KEY_FILE = process.env.LAN_NODE_KEY_FILE || path.join(__dirname, "node-key.json");
 const TRUST_FILE = process.env.LAN_TRUST_FILE || path.join(__dirname, "trust-store.json");
+const DELIVERIES_FILE = process.env.LAN_DELIVERIES_FILE || path.join(__dirname, "deliveries.json");
 
 const data = buildDataset();
 const audit = [];
@@ -92,8 +93,36 @@ function saveTrust() {
 // deliveries  : deliveryId -> delivery    (canonical record for decisions)
 const connections = new Map();
 const pendingQueue = new Map();
-const deliveries = new Map();
-let deliverySeq = 1000;
+// Deliveries persist to disk so a node restart (reinstall, relaunch, or
+// switching dev<->packaged) does NOT wipe the supervisor dashboard. Only the
+// live ws connections are ephemeral; the pushed records survive.
+const deliveries = loadDeliveries();
+let deliverySeq = computeDeliverySeq();
+
+function loadDeliveries() {
+  try {
+    if (fs.existsSync(DELIVERIES_FILE)) {
+      const arr = JSON.parse(fs.readFileSync(DELIVERIES_FILE, "utf8"));
+      if (Array.isArray(arr)) return new Map(arr.map((d) => [d.id, d]));
+    }
+  } catch { /* fresh store */ }
+  return new Map();
+}
+function saveDeliveries() {
+  try {
+    fs.writeFileSync(DELIVERIES_FILE, JSON.stringify([...deliveries.values()]), "utf8");
+  } catch { /* ignore quota / availability */ }
+}
+// Resume the id sequence past the highest persisted DLV-<n> so restored
+// deliveries never collide with new pushes.
+function computeDeliverySeq() {
+  let max = 1000;
+  for (const id of deliveries.keys()) {
+    const n = Number(String(id).replace(/^DLV-/, ""));
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return max;
+}
 
 // --- ICAC assignment loop (supervisor -> investigator) ---------------------
 // icacAssignments: assignmentId -> assignment (canonical record for ack).
@@ -294,6 +323,7 @@ function handleRpc(conn, kind, payload) {
         status: "unread",
       };
       deliveries.set(id, delivery);
+      saveDeliveries();
       logAudit({
         actor: conn.actor, role: conn.role,
         action: `PUSH:${payload.dtype}`, target: payload.to, result: "OK",
@@ -308,7 +338,7 @@ function handleRpc(conn, kind, payload) {
 
     case "action:delivery:ack": {
       const d = deliveries.get(payload.deliveryId);
-      if (d && d.status === "unread") d.status = "read";
+      if (d && d.status === "unread") { d.status = "read"; saveDeliveries(); }
       return { ok: true };
     }
 
@@ -322,6 +352,7 @@ function handleRpc(conn, kind, payload) {
           by: conn.actor, decision: payload.decision,
           comments: payload.comments || "", at: new Date().toISOString(),
         };
+        saveDeliveries();
       }
       logAudit({
         actor: conn.actor, role: conn.role,

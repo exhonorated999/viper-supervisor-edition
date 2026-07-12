@@ -1890,6 +1890,9 @@ textarea.input {
 /* =====================  CONFIGURABLE STAT CARDS  ===================== */
 .stat-cards { width: 100%; }
 .metric-card.cfg { display: flex; flex-direction: column; }
+/* When the metric menu is open, let the dropdown escape the card's clip
+   region and float above the cards below it. */
+.metric-card.cfg.menuopen { overflow: visible; z-index: 60; }
 .metric-card.cfg .metric-head {
   justify-content: space-between;
   align-items: flex-start;

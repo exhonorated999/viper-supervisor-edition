@@ -9,6 +9,7 @@ dist-ssr
 lan-node/audit.log.jsonl
 lan-node/node-key.json
 lan-node/trust-store.json
+lan-node/deliveries.json
 scripts/_*.txt 
 dist-electron
 release

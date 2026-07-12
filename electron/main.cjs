@@ -278,6 +278,7 @@ function startLanNode() {
     LAN_NODE_KEY_FILE: path.join(stateDir, "node-key.json"),
     LAN_TRUST_FILE: path.join(stateDir, "trust-store.json"),
     LAN_AUDIT_FILE: path.join(stateDir, "audit.log.jsonl"),
+    LAN_DELIVERIES_FILE: path.join(stateDir, "deliveries.json"),
   };
 
   try {
