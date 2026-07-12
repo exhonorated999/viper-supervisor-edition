@@ -5,12 +5,15 @@ import {
 } from "recharts";
 import { getIcacLocationLabel } from "./config";
 import { getIcacRole, onIcacConfigChange } from "./config";
-import { loadIcacIndex, getTips, onIcacDataChange } from "./service";
-import { deriveDashboard, type DashboardData, type HeatColumn } from "./derive";
+import { loadIcacIndex, getTips, onIcacDataChange, reopenTips } from "./service";
+import { deriveDashboard, type DashboardData } from "./derive";
 import type { CyberTip } from "./types";
+import { isClosed } from "./types";
 import ImportDialog from "./ImportDialog";
 import AssignDialog from "./AssignDialog";
 import ExportDialog from "./ExportDialog";
+import TipDetailModal from "./TipDetailModal";
+import CloseDialog from "./CloseDialog";
 import VaultGate from "./VaultGate";
 import AuditDialog from "./AuditDialog";
 import IdsTray from "./ids/IdsTray";
@@ -27,6 +30,14 @@ export default function Icac() {
   const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
   const [assignTip, setAssignTip] = useState<CyberTip | null>(null);
+  const [detailTip, setDetailTip] = useState<CyberTip | null>(null);
+  // Assignment Queue controls: closed-tip visibility, min-file filter, sort,
+  // multi-select, and the bulk close-out dialog.
+  const [showClosed, setShowClosed] = useState(false);
+  const [minFiles, setMinFiles] = useState(0);
+  const [filesSort, setFilesSort] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showClose, setShowClose] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
   const [showIds, setShowIds] = useState(false);
@@ -70,10 +81,38 @@ export default function Icac() {
       if (t.assignment.status === "acknowledged") return 2;     // done last
       return 1;                                                 // sent / pending
     };
-    return [...tips].sort(
-      (a, b) => rank(a) - rank(b) || (b.imported_at || "").localeCompare(a.imported_at || "")
+    let rows = tips.filter((t) => (showClosed ? true : !isClosed(t)));
+    if (minFiles > 0) rows = rows.filter((t) => (t.contraband.file_count || 0) >= minFiles);
+    return rows.sort((a, b) =>
+      filesSort
+        ? (b.contraband.file_count || 0) - (a.contraband.file_count || 0) ||
+          (b.imported_at || "").localeCompare(a.imported_at || "")
+        : rank(a) - rank(b) || (b.imported_at || "").localeCompare(a.imported_at || "")
     );
-  }, [tips]);
+  }, [tips, showClosed, minFiles, filesSort]);
+
+  // Selectable = visible open tips (closed tips are reopened individually).
+  const selectableIds = useMemo(
+    () => queue.filter((t) => !isClosed(t)).map((t) => t.id),
+    [queue]
+  );
+  const selectedIds = useMemo(
+    () => selectableIds.filter((id) => selected.has(id)),
+    [selectableIds, selected]
+  );
+  const toggleSel = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  const toggleSelAll = () =>
+    setSelected((prev) => {
+      const all = selectableIds.every((id) => prev.has(id));
+      return all ? new Set() : new Set(selectableIds);
+    });
+  const doReopen = (id: string) =>
+    reopenTips([id]).then(() => { setTips([...getTips()]); setNow(Date.now()); });
 
   if (!location) {
     return (
@@ -143,8 +182,32 @@ export default function Icac() {
               ) : <Empty msg="No dated tips in range" />}
             </Panel>
 
-            <Panel title="Suspect Identifier Heatmap" meta="Cross-tip frequency">
-              <Heatmap columns={data.heatmap} />
+            <Panel title="High-Priority CyberTips" meta="By NCMEC category">
+              {data.priorities.length ? (
+                <div className="icac-table-wrap icac-scroll">
+                  <table className="icac-table">
+                    <thead><tr><th>CyberTip</th><th>Category</th><th>Media</th><th>Assigned</th></tr></thead>
+                    <tbody>
+                      {data.priorities.map((p) => (
+                        <tr key={p.id}>
+                          <td>
+                            <button className="tipd-link mono" onClick={() => { const t = tips.find((x) => x.id === p.id); if (t) setDetailTip(t); }} title="View extracted tip info">
+                              {p.cybertip_number}
+                            </button>
+                            <div className="ic-dim">{p.provider}</div>
+                          </td>
+                          <td>
+                            <span className={`sev-chip sev-${p.severity.toLowerCase()}`}>{p.code}</span>
+                            <div className="ic-dim">{p.label}</div>
+                          </td>
+                          <td>{p.fileCount || "—"}</td>
+                          <td className={p.assignedTo ? "" : "ic-dim"}>{p.assignedTo || "Unassigned"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <Empty msg="No categorized tips yet" />}
             </Panel>
 
             <Panel title="Provider Intelligence" meta="By reporting ESP">
@@ -191,30 +254,101 @@ export default function Icac() {
 
             <Panel title="Assignment Queue" meta="LAN routing · cybertip # only">
               {tips.length ? (
-                <div className="icac-table-wrap">
-                  <table className="icac-table">
-                    <thead><tr><th>CyberTip</th><th>Assigned To</th><th>Status</th><th></th></tr></thead>
-                    <tbody>
-                      {queue.map((t) => {
-                        const a = t.assignment;
-                        const st = !a?.assigned_to ? "unassigned" : (a.status || "sent");
-                        const chip = st === "acknowledged" ? "s-ok" : st === "sent" ? "s-warn" : "s-read";
-                        return (
-                          <tr key={t.id}>
-                            <td className="mono" style={{ color: "#fff" }}>{t.cybertip_number || "—"}</td>
-                            <td className="ic-dim ic-ellipsis" title={a?.assigned_to || ""}>{a?.assigned_to || "—"}</td>
-                            <td><span className={`status-chip ${chip}`}>{st}</span></td>
-                            <td style={{ textAlign: "right" }}>
-                              <button className="btn btn-ghost btn-sm" onClick={() => setAssignTip(t)} disabled={readonly}>
-                                {a?.assigned_to ? "Reassign" : "Assign"}
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <>
+                  <div className="icac-panel-toolbar">
+                    <label className="icac-tb-field">
+                      Min files
+                      <input
+                        type="number"
+                        min={0}
+                        value={minFiles}
+                        onChange={(e) => setMinFiles(Math.max(0, Number(e.target.value) || 0))}
+                        className="icac-tb-num"
+                      />
+                    </label>
+                    <label className="icac-tb-check">
+                      <input type="checkbox" checked={showClosed} onChange={(e) => { setShowClosed(e.target.checked); setSelected(new Set()); }} />
+                      Show closed
+                    </label>
+                    <span className="icac-tb-spacer" />
+                    {selectedIds.length > 0 && !readonly && (
+                      <button className="btn btn-danger btn-sm" onClick={() => setShowClose(true)}>
+                        Close ({selectedIds.length})
+                      </button>
+                    )}
+                  </div>
+                  <div className="icac-table-wrap">
+                    <table className="icac-table">
+                      <thead>
+                        <tr>
+                          <th className="icac-check-col">
+                            <input
+                              type="checkbox"
+                              checked={selectableIds.length > 0 && selectableIds.every((id) => selected.has(id))}
+                              onChange={toggleSelAll}
+                              disabled={readonly || selectableIds.length === 0}
+                              aria-label="Select all"
+                            />
+                          </th>
+                          <th>CyberTip</th>
+                          <th>Assigned To</th>
+                          <th className="icac-sortable" onClick={() => setFilesSort((s) => !s)} title="Sort by file count">
+                            Files{filesSort ? " ▾" : ""}
+                          </th>
+                          <th>Status</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {queue.map((t) => {
+                          const a = t.assignment;
+                          const closed = isClosed(t);
+                          const st = closed ? "closed" : !a?.assigned_to ? "unassigned" : (a.status || "sent");
+                          const chip = closed ? "s-closed" : st === "acknowledged" ? "s-ok" : st === "sent" ? "s-warn" : "s-read";
+                          const fc = t.contraband.file_count || 0;
+                          return (
+                            <tr key={t.id} className={closed ? "icac-row-closed" : ""}>
+                              <td className="icac-check-col">
+                                {!closed && (
+                                  <input
+                                    type="checkbox"
+                                    checked={selected.has(t.id)}
+                                    onChange={() => toggleSel(t.id)}
+                                    disabled={readonly}
+                                    aria-label="Select tip"
+                                  />
+                                )}
+                              </td>
+                              <td>
+                                <button className="tipd-link mono" onClick={() => setDetailTip(t)} title="View extracted tip info">
+                                  {t.cybertip_number || "—"}
+                                </button>
+                              </td>
+                              <td className="ic-dim ic-ellipsis" title={a?.assigned_to || ""}>{a?.assigned_to || "—"}</td>
+                              <td>
+                                {fc > 0 ? <span className={fc > 1 ? "icac-files-multi" : ""}>{fc}</span> : "—"}
+                              </td>
+                              <td>
+                                <span className={`status-chip ${chip}`} title={closed ? `${t.disposition?.reason || "Closed"}${t.disposition?.note ? ` — ${t.disposition.note}` : ""}` : ""}>
+                                  {closed ? (t.disposition?.reason || "closed") : st}
+                                </span>
+                              </td>
+                              <td style={{ textAlign: "right" }}>
+                                {closed ? (
+                                  <button className="btn btn-ghost btn-sm" onClick={() => doReopen(t.id)} disabled={readonly}>Reopen</button>
+                                ) : (
+                                  <button className="btn btn-ghost btn-sm" onClick={() => setAssignTip(t)} disabled={readonly}>
+                                    {a?.assigned_to ? "Reassign" : "Assign"}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               ) : <Empty msg="Import CyberTips to start assigning" />}
             </Panel>
 
@@ -325,6 +459,19 @@ export default function Icac() {
         />
       )}
 
+      {detailTip && (
+        <TipDetailModal tip={detailTip} onClose={() => setDetailTip(null)} />
+      )}
+
+      {showClose && (
+        <CloseDialog
+          ids={selectedIds}
+          by={dataService.getIdentity().name || unit}
+          onClose={() => setShowClose(false)}
+          onDone={() => { setTips([...getTips()]); setNow(Date.now()); setSelected(new Set()); }}
+        />
+      )}
+
       {showExport && (
         <ExportDialog
           tips={tips}
@@ -390,35 +537,6 @@ function Panel({ title, meta, children }: { title: string; meta?: string; childr
 
 function Empty({ msg }: { msg: string }) {
   return <div className="icac-panel-empty">{msg}</div>;
-}
-
-function Heatmap({ columns }: { columns: HeatColumn[] }) {
-  const max = Math.max(1, ...columns.flatMap((c) => c.cells.map((x) => x.count)));
-  const has = columns.some((c) => c.cells.length);
-  if (!has) return <Empty msg="No identifiers yet" />;
-  return (
-    <div className="icac-heat">
-      {columns.map((col) => (
-        <div className="icac-heat-col" key={col.type}>
-          <div className="icac-heat-head">{col.type}</div>
-          {Array.from({ length: 5 }).map((_, r) => {
-            const cell = col.cells[r];
-            const intensity = cell ? cell.count / max : 0;
-            return (
-              <div
-                key={r}
-                className="icac-heat-cell"
-                title={cell ? `${cell.value} · ${cell.count} tips` : ""}
-                style={{ background: cell ? `rgba(0,183,195,${0.15 + intensity * 0.6})` : "transparent", color: intensity > 0.55 ? "#08181a" : "#a0a0a0" }}
-              >
-                {cell ? cell.count : "·"}
-              </div>
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function confChip(t: CyberTip): string {

@@ -3,7 +3,7 @@
 // (deduped), persists, and notifies subscribers. Nothing here touches the LAN.
 // ---------------------------------------------------------------------------
 
-import type { CyberTip, IcacIndex, StoredDoc } from "./types";
+import type { CyberTip, IcacIndex, StoredDoc, CloseReason } from "./types";
 import { emptyIndex, isVaultEnvelope } from "./types";
 import { getIcacStorage } from "./storage/index";
 import { vaultState, encryptIndex, decryptEnvelope } from "./crypto/vault";
@@ -76,6 +76,9 @@ export async function addTips(incoming: CyberTip[]): Promise<{ added: number; up
       // Preserve any assignment already made locally.
       const prev = byKey.get(k)!;
       t.assignment = prev.assignment?.assigned_to ? prev.assignment : t.assignment;
+      // Preserve a supervisor's close-out decision across re-imports so a
+      // resent report does not silently reopen a closed tip.
+      if (prev.disposition) t.disposition = prev.disposition;
       t.id = prev.id;
       byKey.set(k, t);
       updated++;
@@ -102,6 +105,55 @@ export async function updateTip(tip: CyberTip): Promise<void> {
   index = ix;
   await getIcacStorage().writeIndex(await toStored(ix));
   notify();
+}
+
+/**
+ * Bulk close-out: mark the given tip ids closed with a reason (and optional
+ * note). Closed tips remain in the store + exports but are hidden from active
+ * dashboard views. Returns how many were closed.
+ */
+export async function closeTips(
+  ids: string[],
+  d: { reason: CloseReason; note?: string; by: string }
+): Promise<number> {
+  const ix = await loadIcacIndex();
+  const set = new Set(ids);
+  const at = new Date().toISOString();
+  let n = 0;
+  for (const t of ix.tips) {
+    if (!set.has(t.id)) continue;
+    t.disposition = { state: "closed", reason: d.reason, note: d.note, closedBy: d.by, closedAt: at };
+    n++;
+  }
+  if (n) {
+    ix.updated_at = at;
+    index = ix;
+    await getIcacStorage().writeIndex(await toStored(ix));
+    notify();
+    void logAudit("tip.close", `${n} tip(s) closed — ${d.reason}${d.note ? ` (${d.note})` : ""}`);
+  }
+  return n;
+}
+
+/** Reopen previously closed tips (clears their disposition). */
+export async function reopenTips(ids: string[]): Promise<number> {
+  const ix = await loadIcacIndex();
+  const set = new Set(ids);
+  let n = 0;
+  for (const t of ix.tips) {
+    if (set.has(t.id) && t.disposition?.state === "closed") {
+      t.disposition = { state: "open" };
+      n++;
+    }
+  }
+  if (n) {
+    ix.updated_at = new Date().toISOString();
+    index = ix;
+    await getIcacStorage().writeIndex(await toStored(ix));
+    notify();
+    void logAudit("tip.reopen", `${n} tip(s) reopened`);
+  }
+  return n;
 }
 
 /**

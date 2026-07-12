@@ -86,6 +86,9 @@ export default function ImportDialog({ onClose, onDone }: { onClose: () => void;
                   {typeof r.contraband === "number" ? `${r.contraband} media · ` : ""}
                   {r.detail || r.status}
                 </span>
+                {typeof r.contraband === "number" && r.contraband > 1 && (
+                  <span className="ic-multifile" title={`${r.contraband} files reported`}>MULTI-FILE ×{r.contraband}</span>
+                )}
               </div>
             ))}
           </div>

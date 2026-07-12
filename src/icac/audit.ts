@@ -26,6 +26,8 @@ export type AuditAction =
   | "assign.ack"
   | "export"
   | "tip.edit"
+  | "tip.close"
+  | "tip.reopen"
   | "role.change"
   | "audit.clear"
   | "ids.download"
@@ -122,6 +124,8 @@ export const AUDIT_LABELS: Record<AuditAction, string> = {
   "assign.ack": "Assignment acknowledged",
   export: "Data exported",
   "tip.edit": "Tip edited",
+  "tip.close": "CyberTip(s) closed",
+  "tip.reopen": "CyberTip(s) reopened",
   "role.change": "Access role changed",
   "audit.clear": "Audit log cleared",
   "ids.download": "IDS download captured",

@@ -99,6 +99,28 @@ export interface Assignment {
   acknowledgedAt?: string;
 }
 
+/** Supervisor close-out reasons for a CyberTip that won't be investigated. */
+export type CloseReason =
+  | "Not CSAM"
+  | "Not a crime"
+  | "Unfounded"
+  | "Duplicate"
+  | "Insufficient info"
+  | "Other";
+
+/**
+ * Disposition = a supervisor's decision to close (or reopen) a tip. Closed tips
+ * stay in the local store + exports but are hidden from active dashboard views.
+ * Never LAN-transmitted.
+ */
+export interface Disposition {
+  state: "open" | "closed";
+  reason?: CloseReason;
+  note?: string;
+  closedBy?: string;
+  closedAt?: string;
+}
+
 /** A parsed CyberTip record — the core ICAC store entity. */
 export interface CyberTip {
   /** Stable local id (uuid-ish). Distinct from cybertip_number. */
@@ -120,6 +142,9 @@ export interface CyberTip {
   linked_tips: string[];
 
   assignment: Assignment;
+
+  /** Supervisor close-out state. Absent/undefined ⇒ open. */
+  disposition?: Disposition;
 
   // Provenance / QA
   source_file: string;
@@ -188,4 +213,9 @@ export function emptyContraband(): Contraband {
 
 export function emptyIndex(): IcacIndex {
   return { version: 1, updated_at: new Date().toISOString(), tips: [], suspects: [] };
+}
+
+/** True when a supervisor has closed this tip (hidden from active views). */
+export function isClosed(t: CyberTip): boolean {
+  return t.disposition?.state === "closed";
 }

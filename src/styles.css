@@ -1556,7 +1556,10 @@ textarea.input {
 .icac-tile-sub { color: var(--text-faint); font-size: 10.5px; margin-top: 4px; }
 
 /* Tables */
-.icac-table-wrap { overflow: auto; flex: 1; }
+.icac-table-wrap { overflow: auto; flex: 1; max-height: 320px; }
+/* Explicit scroll cap for data-heavy lists (e.g. High-Priority CyberTips) so
+   the card scrolls internally instead of stretching the row for large sets. */
+.icac-scroll { max-height: 320px; }
 .icac-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .icac-table th { text-align: left; color: var(--text-faint); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; padding: 6px 8px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); }
 .icac-table td { padding: 8px; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
@@ -1564,6 +1567,71 @@ textarea.input {
 .ic-dim { color: var(--text-faint); font-size: 11px; }
 .ic-ellipsis { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ic-badge { background: rgba(0,183,195,0.15); color: var(--cyan); border: 1px solid rgba(0,183,195,0.4); border-radius: 999px; padding: 2px 8px; font-size: 11px; }
+/* NCMEC category severity chips (High-Priority CyberTips list) */
+.sev-chip { display: inline-block; border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; border: 1px solid transparent; }
+.sev-chip.sev-high { background: rgba(232,74,74,0.16); color: #ff8080; border-color: rgba(232,74,74,0.45); }
+.sev-chip.sev-medium { background: rgba(240,136,62,0.15); color: #f0a35e; border-color: rgba(240,136,62,0.4); }
+.sev-chip.sev-low { background: rgba(0,183,195,0.14); color: var(--cyan); border-color: rgba(0,183,195,0.4); }
+
+/* Clickable cybertip number (opens the tip detail modal) */
+.tipd-link {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: #fff; font-weight: 600; font-size: inherit;
+  border-bottom: 1px dashed rgba(0,183,195,0.55); line-height: 1.2;
+  transition: color var(--t-hover) ease, border-color var(--t-hover) ease;
+}
+.tipd-link:hover { color: var(--cyan); border-bottom-color: var(--cyan); }
+
+/* Tip detail modal */
+.icac-tip-modal { width: min(720px, 94vw); max-height: 88vh; display: flex; flex-direction: column; }
+.tipd-subhead { color: var(--text-faint); font-size: 12px; margin-top: 3px; }
+.tipd-body { overflow-y: auto; }
+.tipd-section { border-top: 1px solid var(--border-soft); padding: 14px 0; }
+.tipd-section:first-child { border-top: none; padding-top: 4px; }
+.tipd-section-head {
+  color: var(--cyan); font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; margin-bottom: 10px;
+}
+.tipd-section-body { display: flex; flex-direction: column; gap: 8px; }
+.tipd-row { display: grid; grid-template-columns: 130px 1fr; gap: 12px; align-items: start; font-size: 13px; }
+.tipd-k { color: var(--text-faint); font-size: 12px; }
+.tipd-v { color: var(--text); word-break: break-word; }
+.tipd-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tipd-chip {
+  background: var(--panel-3); border: 1px solid var(--border-soft); border-radius: 6px;
+  padding: 2px 8px; font-size: 12px; color: var(--text); word-break: break-all;
+}
+.tipd-party { border: 1px solid var(--border-soft); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; }
+.tipd-party-head { display: flex; align-items: center; gap: 8px; }
+.tipd-party-name { color: #fff; font-weight: 600; font-size: 13px; }
+
+/* Closed-tip status chip + disposition workflow */
+.status-chip.s-closed { background: rgba(148,163,184,0.16); color: #cbd5e1; }
+/* Assignment Queue toolbar (min-files filter · show closed · bulk close) */
+.icac-panel-toolbar { display: flex; align-items: center; gap: 14px; padding: 4px 2px 10px; flex-wrap: wrap; }
+.icac-tb-field { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 12px; }
+.icac-tb-num { width: 54px; background: var(--panel-3); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; padding: 3px 6px; }
+.icac-tb-check { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 12px; cursor: pointer; }
+.icac-tb-check input, .icac-check-col input { accent-color: var(--cyan); cursor: pointer; }
+.icac-tb-spacer { flex: 1; }
+.icac-check-col { width: 30px; text-align: center; }
+.icac-sortable { cursor: pointer; user-select: none; }
+.icac-sortable:hover { color: var(--cyan); }
+.icac-files-multi { display: inline-block; background: rgba(240,136,62,0.18); color: #f0a35e; border: 1px solid rgba(240,136,62,0.45); border-radius: 6px; padding: 1px 7px; font-weight: 700; font-size: 12px; }
+.icac-row-closed td { opacity: 0.62; }
+.icac-row-closed:hover td { opacity: 0.85; }
+
+/* Multi-file badge in the Import dialog */
+.ic-multifile { margin-left: 8px; background: rgba(240,136,62,0.18); color: #f0a35e; border: 1px solid rgba(240,136,62,0.45); border-radius: 6px; padding: 1px 7px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; }
+
+/* Close-out dialog */
+.icac-close-modal { width: min(520px, 94vw); }
+.icac-close-lead { color: var(--text-dim); font-size: 12.5px; line-height: 1.5; margin-bottom: 16px; }
+.icac-close-reasons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.icac-close-reason { background: var(--panel-3); border: 1px solid var(--border); color: var(--text-dim); border-radius: 999px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; transition: all var(--t-hover) ease; }
+.icac-close-reason:hover { border-color: var(--cyan); color: var(--text); }
+.icac-close-reason.sel { background: rgba(239,83,80,0.14); border-color: var(--red); color: #ff8a85; font-weight: 600; }
+.icac-close-note { width: 100%; background: var(--panel-3); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 13px; padding: 8px 10px; resize: vertical; font-family: inherit; margin-top: 6px; }
 
 /* Heatmap */
 .icac-heat { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; flex: 1; align-content: start; }
