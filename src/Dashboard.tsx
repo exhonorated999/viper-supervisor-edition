@@ -639,7 +639,7 @@ function AssignCase() {
       setToast("Case number and an assigned investigator are required.");
       return;
     }
-    const caseNumber = `MC-2025-${num}`;
+    const caseNumber = num.trim();
     if (assignee.startsWith("lan:")) {
       // On-network investigator — push a notice to their Project V.I.P.E.R.,
       // and keep a local record so the supervisor can track it here too.
@@ -683,10 +683,7 @@ function AssignCase() {
       <div className="form-grid">
         <div className="field">
           <label>Case Number</label>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ color: "var(--text-dim)", fontSize: 13 }}>MC-2025-</span>
-            <input className="input" style={{ width: "100%" }} value={num} onChange={(e) => setNum(e.target.value)} placeholder="____" />
-          </div>
+          <input className="input" value={num} onChange={(e) => setNum(e.target.value)} placeholder="e.g. 26-99998" />
         </div>
         <div className="field">
           <label>Case Description</label>

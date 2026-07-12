@@ -37,6 +37,7 @@ npmRebuild: false
 electronCompile: false
 
 win:
+  icon: build/icon.ico                     # glowing-V app icon (exe + window + shortcuts)
   target:
     - target: nsis
       arch:
@@ -57,6 +58,9 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: VIPER Supervisor
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
   artifactName: VIPER-Supervisor-Edition-Setup-${version}.${ext}
 
 portable:

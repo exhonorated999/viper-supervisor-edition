@@ -33,6 +33,8 @@ let isQuitting = false;
 const IDS_PARTITION = "persist:ids"; // isolated, persistent session for IDS login
 const STAGING_DIRNAME = "ids-staging";
 const STAGING_INDEX = "_index.json";
+const WARRANT_DIRNAME = "warrant-pdfs"; // signed Wilson-warrant PDFs, preserved for recall
+const WARRANT_INDEX = "_index.json";
 
 let mainWindow = null;
 
@@ -68,6 +70,38 @@ function writeIndex(items) {
 
 function sanitize(name) {
   return String(name || "download.zip").replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 120);
+}
+
+// --- warrant PDF store (on disk, survives restarts) ------------------------
+// Signed Wilson-warrant PDFs are preserved as real files under
+// userData/warrant-pdfs so they can be recalled long after ingest. Keyed by
+// the renderer's warrant id; an _index.json maps id -> { name, path }.
+
+function warrantDir() {
+  const dir = path.join(app.getPath("userData"), WARRANT_DIRNAME);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function warrantIndexPath() {
+  return path.join(warrantDir(), WARRANT_INDEX);
+}
+
+function readWarrantIndex() {
+  try {
+    const arr = JSON.parse(fs.readFileSync(warrantIndexPath(), "utf8"));
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeWarrantIndex(items) {
+  try {
+    fs.writeFileSync(warrantIndexPath(), JSON.stringify(items, null, 2), "utf8");
+  } catch (e) {
+    console.error("[warrant] failed to write index:", e);
+  }
 }
 
 // --- download interception on the IDS webview session ----------------------
@@ -136,6 +170,42 @@ function registerIpc() {
 
   ipcMain.handle("ids:open-external", (_e, url) => {
     if (typeof url === "string" && /^https?:\/\//i.test(url)) shell.openExternal(url);
+    return true;
+  });
+
+  // --- warrant PDF store IPC ---
+  ipcMain.handle("warrant:save", (_e, id, name, bytes) => {
+    try {
+      if (!id || !bytes) return null;
+      const fname = `${sanitize(id)}__${sanitize(name || "warrant.pdf")}`;
+      const savePath = path.join(warrantDir(), fname);
+      fs.writeFileSync(savePath, Buffer.from(bytes));
+      const items = readWarrantIndex().filter((m) => m.id !== id);
+      const meta = { id, name: name || "warrant.pdf", path: savePath, savedAt: Date.now() };
+      items.push(meta);
+      writeWarrantIndex(items);
+      return { id: meta.id, name: meta.name, path: meta.path };
+    } catch (e) {
+      console.error("[warrant] save failed:", e);
+      return null;
+    }
+  });
+
+  ipcMain.handle("warrant:read", (_e, id) => {
+    const meta = readWarrantIndex().find((m) => m.id === id);
+    if (!meta || !fs.existsSync(meta.path)) return null;
+    const bytes = fs.readFileSync(meta.path); // Buffer -> Uint8Array in renderer
+    return { name: meta.name, bytes };
+  });
+
+  ipcMain.handle("warrant:list", () =>
+    readWarrantIndex().map((m) => ({ id: m.id, name: m.name, savedAt: m.savedAt })));
+
+  ipcMain.handle("warrant:remove", (_e, id) => {
+    const items = readWarrantIndex();
+    const meta = items.find((m) => m.id === id);
+    if (meta) { try { if (fs.existsSync(meta.path)) fs.unlinkSync(meta.path); } catch { /* ignore */ } }
+    writeWarrantIndex(items.filter((m) => m.id !== id));
     return true;
   });
 }
@@ -313,6 +383,9 @@ function resolveRendererUrl() {
 }
 
 function createWindow() {
+  // Glowing-V app icon. Lives at build/icon.ico (repo root). In dev this sets
+  // the window + taskbar icon; the packaged exe embeds it via electron-builder.
+  const iconPath = path.join(__dirname, "..", "build", "icon.ico");
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -320,6 +393,7 @@ function createWindow() {
     minHeight: 680,
     backgroundColor: "#0d1117",
     show: false,
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,

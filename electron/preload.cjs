@@ -33,6 +33,20 @@ contextBridge.exposeInMainWorld("viperIDS", {
   },
 });
 
+// Warrant PDF store bridge — preserves signed Wilson-warrant PDFs as real
+// files under userData/warrant-pdfs, recallable long after ingest.
+contextBridge.exposeInMainWorld("viperWarrants", {
+  isElectron: true,
+  /** Save a signed PDF. bytes = ArrayBuffer/Uint8Array. Returns meta | null. */
+  save: (id, name, bytes) => ipcRenderer.invoke("warrant:save", id, name, bytes),
+  /** Read a warrant's PDF bytes. Returns { name, bytes } | null. */
+  read: (id) => ipcRenderer.invoke("warrant:read", id),
+  /** List saved warrant PDF metadata (no bytes). */
+  list: () => ipcRenderer.invoke("warrant:list"),
+  /** Delete a warrant's saved PDF. */
+  remove: (id) => ipcRenderer.invoke("warrant:remove", id),
+});
+
 // Auto-update bridge (mirrors Project VIPER's electronAPI update surface).
 contextBridge.exposeInMainWorld("viperUpdate", {
   isElectron: true,

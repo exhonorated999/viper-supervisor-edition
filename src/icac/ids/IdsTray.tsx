@@ -7,7 +7,8 @@ import {
   filesFor, setStatus, remove, clearIngested, type StagedItem,
 } from "./staging";
 import { ingestFiles, type IngestProgress } from "../import/ingest";
-import { addTips } from "../service";
+import { addTips, createWarrant, saveWarrantPdf } from "../service";
+import { dataService } from "../../data/service";
 import { logAudit } from "../audit";
 
 function fmtBytes(n: number): string {
@@ -31,6 +32,11 @@ export default function IdsTray({
   const [rows, setRows] = useState<IngestProgress[]>([]);
   const [summary, setSummary] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Optional Wilson warrant attached to the whole batch on ingest.
+  const [warrantNo, setWarrantNo] = useState("");
+  const [warrantFile, setWarrantFile] = useState<File | null>(null);
+  const warrantRef = useRef<HTMLInputElement>(null);
 
   const webviewRef = useRef<any>(null);
   const pickRef = useRef<HTMLInputElement>(null);
@@ -119,14 +125,26 @@ export default function IdsTray({
       const { added, updated } = await addTips(tips);
       for (const p of pairs) setStatus(p.id, "ingested");
       void logAudit("ids.ingest", `${pairs.length} file(s) · ${added} added, ${updated} updated`);
-      setSummary(`${added} added, ${updated} updated · ${tips.length} report(s) from ${pairs.length} file(s)`);
+      // Attach the Wilson warrant (if provided) to every tip in this batch and
+      // preserve its signed PDF for recall.
+      let warrantNote = "";
+      if (warrantNo.trim()) {
+        const w = await createWarrant(
+          { warrant_number: warrantNo.trim(), authoredBy: dataService.getIdentity().name || undefined },
+          tips.map((t) => t.id),
+        );
+        if (warrantFile) await saveWarrantPdf(w.id, warrantFile);
+        warrantNote = ` · warrant #${w.warrant_number} attached to ${tips.length} tip(s)`;
+        setWarrantNo(""); setWarrantFile(null);
+      }
+      setSummary(`${added} added, ${updated} updated · ${tips.length} report(s) from ${pairs.length} file(s)${warrantNote}`);
       onIngested?.();
     } catch (e: any) {
       setError(String(e?.message || e) + " — set a storage location in Settings → Optional Modules.");
     } finally {
       setBusy(false);
     }
-  }, [readonly, onIngested]);
+  }, [readonly, onIngested, warrantNo, warrantFile]);
 
   const noUrl = !cfg.url;
 
@@ -217,6 +235,38 @@ export default function IdsTray({
               >
                 {busy ? "Parsing…" : `Batch Ingest & Parse (${staged.length})`}
               </button>
+            </div>
+          </div>
+
+          {/* Optional Wilson warrant attached to this whole batch on ingest. */}
+          <div className="icac-import-warrant">
+            <div className="icac-import-warrant-head">
+              <span>⚖️ Wilson warrant <span className="ic-dim">(optional — applied to this whole batch)</span></span>
+            </div>
+            <div className="icac-import-warrant-row">
+              <input
+                className="icac-import-warrant-no"
+                placeholder="Warrant number, e.g. 2026-SW-00481"
+                value={warrantNo}
+                onChange={(e) => setWarrantNo(e.target.value)}
+                disabled={busy || readonly}
+              />
+              <input
+                ref={warrantRef}
+                type="file"
+                accept=".pdf"
+                style={{ display: "none" }}
+                onChange={(e) => setWarrantFile(e.target.files?.[0] ?? null)}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => warrantRef.current?.click()}
+                disabled={busy || readonly}
+              >
+                {warrantFile ? "Change PDF" : "Attach signed PDF"}
+              </button>
+              <span className="ic-dim ic-ellipsis" style={{ maxWidth: 160 }}>{warrantFile ? warrantFile.name : "No PDF"}</span>
             </div>
           </div>
 

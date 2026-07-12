@@ -9,6 +9,7 @@ import { getIcacStorage } from "./storage/index";
 import { vaultState, encryptIndex, decryptEnvelope } from "./crypto/vault";
 import { idbGet, idbSet, idbDel } from "./storage/idb";
 import { logAudit } from "./audit";
+import { warrantFs } from "./warrantFs";
 
 let index: IcacIndex | null = null;
 let loading: Promise<IcacIndex> | null = null;
@@ -270,10 +271,13 @@ export async function deleteWarrant(id: string): Promise<void> {
   ix.warrants = (ix.warrants ?? []).filter((x) => x.id !== id);
   await persistIndex(ix);
   try { await idbDel(WARRANT_PDF_PREFIX + id); } catch { /* ignore */ }
+  try { await warrantFs.remove(id); } catch { /* ignore */ }
   void logAudit("warrant.delete", `#${w.warrant_number || "(no #)"}`);
 }
 
-/** Store the signed PDF for a warrant (blob in idb; metadata on the warrant). */
+/** Store the signed PDF for a warrant (blob in idb; metadata on the warrant).
+ * In the desktop build the PDF is ALSO written to userData/warrant-pdfs as a
+ * real file so it can be recalled long after ingest. */
 export async function saveWarrantPdf(id: string, file: File): Promise<void> {
   const ix = await loadIcacIndex();
   const w = ix.warrants?.find((x) => x.id === id);
@@ -283,16 +287,26 @@ export async function saveWarrantPdf(id: string, file: File): Promise<void> {
   await idbSet(WARRANT_PDF_PREFIX + id, rec);
   w.signed_pdf_name = file.name;
   w.signed_pdf_key = WARRANT_PDF_PREFIX + id;
+  // Best-effort filesystem copy (desktop only; no-op in the web build).
+  try { await warrantFs.save(id, file.name, bytes.slice(0)); } catch { /* ignore */ }
   await persistIndex(ix);
 }
 
-/** Load a warrant's signed PDF as a Blob (or null when none stored). */
+/** Load a warrant's signed PDF as a Blob (or null when none stored).
+ * Prefers IndexedDB; falls back to the on-disk warrant-pdfs folder (desktop). */
 export async function loadWarrantPdf(id: string): Promise<Blob | null> {
   try {
     const rec = await idbGet<StoredPdf>(WARRANT_PDF_PREFIX + id);
-    if (!rec || !rec.bytes) return null;
-    return new Blob([rec.bytes], { type: rec.type || "application/pdf" });
-  } catch {
-    return null;
-  }
+    if (rec && rec.bytes) return new Blob([rec.bytes], { type: rec.type || "application/pdf" });
+  } catch { /* fall through to disk */ }
+  try {
+    const disk = await warrantFs.read(id);
+    if (disk && disk.bytes) {
+      // Copy into a fresh ArrayBuffer-backed view so Blob accepts it cleanly.
+      const buf = new Uint8Array(disk.bytes.byteLength);
+      buf.set(disk.bytes);
+      return new Blob([buf], { type: "application/pdf" });
+    }
+  } catch { /* ignore */ }
+  return null;
 }
