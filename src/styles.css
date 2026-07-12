@@ -1626,6 +1626,7 @@ textarea.input {
 
 /* Off-system (manual) assignment status chip */
 .status-chip.s-manual { background: rgba(139,92,246,0.16); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.4); }
+.status-chip.s-lan { background: rgba(34,211,238,0.14); color: #67e8f9; border: 1px solid rgba(34,211,238,0.4); }
 
 /* Wilson warrant — queue chip */
 .icac-warrant-chip { display: inline-flex; align-items: center; margin-left: 8px; background: rgba(0,183,195,0.14); color: #6fe3ec; border: 1px solid rgba(0,183,195,0.4); border-radius: 6px; padding: 1px 7px; font-size: 10.5px; font-weight: 700; white-space: nowrap; }
@@ -1754,6 +1755,7 @@ textarea.input {
 }
 .icac-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
 .icac-field > span { font-size: 12px; color: var(--text-dim); }
+.icac-field input,
 .icac-field select,
 .icac-field textarea {
   width: 100%; box-sizing: border-box;
@@ -1761,6 +1763,9 @@ textarea.input {
   border: 1px solid var(--border, #2a2f3a); border-radius: 8px;
   padding: 8px 10px; font-size: 13px; font-family: inherit;
 }
+.icac-field input::placeholder,
+.icac-field textarea::placeholder { color: var(--text-dim, #7a8394); }
+.icac-field input:focus,
 .icac-field select:focus,
 .icac-field textarea:focus { outline: none; border-color: var(--cyan); }
 .icac-field textarea { resize: vertical; min-height: 44px; }

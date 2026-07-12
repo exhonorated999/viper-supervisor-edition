@@ -89,13 +89,14 @@ export default function Cases() {
 
       <div className="panel rise" style={{ animationDelay: "40ms", marginBottom: 18 }}>
         <div className="panel-head">
-          <div className="panel-title">Off-System Cases</div>
+          <div className="panel-title">Assigned Cases</div>
           <span className="panel-meta">{manual.length} · tracked locally</span>
         </div>
         {manual.length === 0 ? (
           <div className="icac-panel-empty">
-            None yet. Create lightweight case records for investigators who don't run
-            Project V.I.P.E.R. These stay on this machine and never cross the network.
+            None yet. Cases you assign from the Dashboard are tracked here — on-network
+            ones also push a notice to the investigator's Project V.I.P.E.R.; off-system
+            ones stay on this machine and never cross the network.
           </div>
         ) : (
           <table className="table">
@@ -107,7 +108,12 @@ export default function Cases() {
                 <tr key={c.id}>
                   <td style={{ fontWeight: 600 }}>{c.case_number || "—"}</td>
                   <td title={c.note || ""}>{c.title || "—"}</td>
-                  <td>{c.assignee_name || <span style={{ color: "var(--text-faint)" }}>Unassigned</span>}</td>
+                  <td>
+                    {c.assignee_name || <span style={{ color: "var(--text-faint)" }}>Unassigned</span>}
+                    <span className={`status-chip ${c.mode === "lan" ? "s-lan" : "s-manual"}`} style={{ marginLeft: 8 }}>
+                      {c.mode === "lan" ? "on-network" : "off-system"}
+                    </span>
+                  </td>
                   <td style={{ color: "var(--text-dim)" }}>{new Date(c.createdAt).toLocaleDateString()}</td>
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                     <button className="btn btn-ghost btn-sm" onClick={() => setEditing(c)}>Edit</button>

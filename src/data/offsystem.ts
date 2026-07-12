@@ -25,7 +25,7 @@ export interface ManualInvestigator {
   createdAt: string;
 }
 
-/** A lightweight, supervisor-authored case for an off-system investigator. */
+/** A lightweight, supervisor-authored case tracked locally on this machine. */
 export interface ManualCase {
   id: string;
   case_number: string;
@@ -33,6 +33,8 @@ export interface ManualCase {
   assignee_id?: string;
   assignee_name?: string;
   note?: string;
+  /** "manual" = off-system investigator; "lan" = pushed to an on-network one. */
+  mode?: "manual" | "lan";
   createdAt: string;
 }
 

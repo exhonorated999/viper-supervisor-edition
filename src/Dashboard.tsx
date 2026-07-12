@@ -12,6 +12,10 @@ import {
   Cell,
 } from "recharts";
 import { dataService, type SupervisorIdentity } from "./data/service";
+import {
+  getManualInvestigators, addManualCase, onOffSystemChange,
+  type ManualInvestigator,
+} from "./data/offsystem";
 import { deriveTrendFromCases, type TrendRange } from "./data/derive";
 import type {
   Stats,
@@ -612,27 +616,63 @@ function AlertGlyph({ category }: { category: Alert["category"] }) {
 
 function AssignCase() {
   const [desc, setDesc] = useState("");
-  const [investigator, setInvestigator] = useState("");
+  // Composite selection: "" | "lan:<deviceId>" | "manual:<id>"
+  const [assignee, setAssignee] = useState("");
   const [priority, setPriority] = useState("");
-  const [date, setDate] = useState("2025-04-22");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [num, setNum] = useState("");
+  const [online, setOnline] = useState<{ deviceId: string; name: string; badge?: string; unit?: string }[]>([]);
+  const [manual, setManual] = useState<ManualInvestigator[]>([]);
   const [toast, setToast] = useState<string | null>(null);
 
+  useEffect(() => {
+    let alive = true;
+    dataService.getInvestigators().then((list) => { if (alive) setOnline(list); });
+    const load = () => setManual(getManualInvestigators());
+    load();
+    const off = onOffSystemChange(load);
+    return () => { alive = false; off(); };
+  }, []);
+
   const submit = () => {
-    if (!num || !investigator) {
-      setToast("Case number and assigned detective are required.");
+    if (!num || !assignee) {
+      setToast("Case number and an assigned investigator are required.");
       return;
     }
     const caseNumber = `MC-2025-${num}`;
-    dataService.assignCase({
-      caseNumber,
-      description: desc,
-      detective: investigator,
-      priority,
-      assignedDate: date,
-    });
-    setToast(`Case ${caseNumber} assigned to ${investigator}. Pushed to investigator device over LAN.`);
-    setDesc(""); setNum(""); setInvestigator(""); setPriority("");
+    if (assignee.startsWith("lan:")) {
+      // On-network investigator — push a notice to their Project V.I.P.E.R.,
+      // and keep a local record so the supervisor can track it here too.
+      const deviceId = assignee.slice(4);
+      const inv = online.find((o) => o.deviceId === deviceId);
+      const name = inv?.name || "Investigator";
+      dataService.assignCase({
+        caseNumber, description: desc, detective: name,
+        priority, note: desc, assignedDate: date, to: deviceId,
+      });
+      addManualCase({
+        case_number: caseNumber,
+        title: desc || caseNumber,
+        assignee_name: name,
+        note: priority ? `Priority: ${priority}` : undefined,
+        mode: "lan",
+      });
+      setToast(`Case ${caseNumber} assigned to ${name} — notice pushed to their Project V.I.P.E.R. device.`);
+    } else {
+      // Off-system investigator — track locally only, nothing crosses the LAN.
+      const id = assignee.slice(7);
+      const inv = manual.find((m) => m.id === id);
+      addManualCase({
+        case_number: caseNumber,
+        title: desc || caseNumber,
+        assignee_id: id,
+        assignee_name: inv?.name,
+        note: priority ? `Priority: ${priority}` : undefined,
+        mode: "manual",
+      });
+      setToast(`Case ${caseNumber} assigned to ${inv?.name || "off-system investigator"} (off-system — tracked locally, nothing sent over the network).`);
+    }
+    setDesc(""); setNum(""); setAssignee(""); setPriority("");
   };
 
   return (
@@ -654,7 +694,32 @@ function AssignCase() {
         </div>
         <div className="field">
           <label>Assign To</label>
-          <input className="input" value={investigator} onChange={(e) => setInvestigator(e.target.value)} placeholder="Investigator name…" />
+          <select className="select" value={assignee} onChange={(e) => setAssignee(e.target.value)}>
+            <option value="">Select investigator…</option>
+            {online.length > 0 && (
+              <optgroup label="● Online (Project V.I.P.E.R.)">
+                {online.map((o) => (
+                  <option key={`lan:${o.deviceId}`} value={`lan:${o.deviceId}`}>
+                    {o.name}{o.badge ? ` · #${o.badge}` : ""}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {manual.length > 0 && (
+              <optgroup label="Off-System (manual)">
+                {manual.map((m) => (
+                  <option key={`manual:${m.id}`} value={`manual:${m.id}`}>
+                    {m.name}{m.badge ? ` · #${m.badge}` : ""}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+          {online.length === 0 && manual.length === 0 && (
+            <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>
+              No investigators online or on file. Add off-system investigators in the Investigators view.
+            </div>
+          )}
         </div>
         <div className="field">
           <label>Priority</label>

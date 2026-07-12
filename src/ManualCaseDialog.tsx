@@ -21,8 +21,8 @@ export default function ManualCaseDialog({
     const data = {
       case_number: caseNumber.trim(),
       title: title.trim(),
-      assignee_id: inv?.id,
-      assignee_name: inv?.name,
+      assignee_id: inv?.id ?? existing?.assignee_id,
+      assignee_name: inv?.name ?? existing?.assignee_name,
       note: note.trim() || undefined,
     };
     if (existing) updateManualCase({ ...existing, ...data });

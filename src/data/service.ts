@@ -400,12 +400,24 @@ export const dataService = {
     return Promise.resolve(returned);
   },
 
+  /** Live roster of investigators currently connected to the LAN node. */
+  async getInvestigators(): Promise<{ deviceId: string; name: string; badge?: string; unit?: string }[]> {
+    try {
+      await lanClient.waitForConnected(2500);
+      return await lanClient.request("get:investigators");
+    } catch {
+      return [];
+    }
+  },
+
   assignCase(input: {
     caseNumber: string;
     description: string;
     detective: string;
     priority?: string;
+    note?: string;
     assignedDate?: string;
+    to?: string | null;
   }): Promise<CaseStatus> {
     const newCase: CaseStatus = {
       caseNumber: input.caseNumber,
@@ -419,7 +431,11 @@ export const dataService = {
       lastActivityKind: "New Case",
       lastActivityDate: new Date().toISOString().slice(0, 10),
     };
-    lanClient.action("action:case:assign", input).catch(() => {});
+    // Only push over the LAN when a target investigator device is supplied
+    // (an on-network investigator). Off-system assignments never touch the wire.
+    if (input.to) {
+      lanClient.action("action:case:assign", input).catch(() => {});
+    }
     return Promise.resolve(newCase);
   },
 

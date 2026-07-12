@@ -134,6 +134,17 @@ const icacAssignments = new Map();
 const icacPending = new Map();
 let icacSeq = 2000;
 
+// --- Case assignment loop (supervisor -> investigator) ---------------------
+// Mirror of the ICAC loop, but for supervisor-authored CASE assignments. The
+// ONLY data that crosses the wire is the case NUMBER plus the supervisor's own
+// description/note/priority — an INSTRUCTION to the investigator, never the
+// investigator's own case content/evidence.
+// caseAssignments: assignmentId -> assignment (canonical record for ack).
+// casePending    : deviceId -> [assignment]  (flushed when the device connects).
+const caseAssignments = new Map();
+const casePending = new Map();
+let caseAssignSeq = 3000;
+
 // --- RBAC ------------------------------------------------------------------
 const READS = new Set([
   "get:stats", "get:cases", "get:workload",
@@ -142,6 +153,8 @@ const READS = new Set([
   // ICAC assignment loop (supervisor -> investigator): supervisor discovers
   // the live investigator roster and reads its own outbound assignments.
   "get:investigators", "get:icac:assignments",
+  // Case assignment loop (supervisor authors, investigator acknowledges).
+  "get:case:assignments",
 ]);
 const ROLE_PERMS = {
   supervisor: {
@@ -162,8 +175,8 @@ const ROLE_PERMS = {
   // or act on supervisor-side case content. For the ICAC loop they also
   // RECEIVE assignments and acknowledge them (the reverse direction).
   investigator: {
-    reads: new Set(["get:unit", "get:roster", "get:icac:assignments"]),
-    actions: new Set(["action:push", "action:icac:ack"]),
+    reads: new Set(["get:unit", "get:roster", "get:icac:assignments", "get:case:assignments"]),
+    actions: new Set(["action:push", "action:icac:ack", "action:case:ack"]),
     denied: new Set([
       "action:ops:sign", "action:ops:return", "action:case:assign",
       "action:icac:assign",
@@ -411,7 +424,65 @@ function handleRpc(conn, kind, payload) {
       logAudit({ actor: conn.actor, role: conn.role, action: "CASE_ASSIGN", target: newCase.caseNumber, result: "OK" });
       // Real-time: the assignment lands on the investigator immediately.
       broadcastEvent("case:activity", newCase);
-      return newCase;
+
+      // Targeted delivery to the assigned investigator device (mirror of the
+      // ICAC loop). Only the case number + supervisor-authored description /
+      // note / priority cross the wire — an instruction, never the
+      // investigator's own case content.
+      let assignmentId = null;
+      let delivered = false;
+      if (payload.to) {
+        const id = `CASE-${++caseAssignSeq}`;
+        const assignment = {
+          id,
+          caseNumber: newCase.caseNumber,
+          description: payload.description || "",
+          priority: payload.priority || null,
+          note: payload.note || "",
+          detective: payload.detective || "",
+          fromName: conn.name, fromBadge: conn.badge, fromDeviceId: conn.deviceId,
+          to: payload.to,
+          sentAt: new Date().toISOString(),
+          status: "sent",
+          acknowledgedAt: null,
+        };
+        caseAssignments.set(id, assignment);
+        delivered = sendToDevice(payload.to, "case:assign:new", caseEnvelope(assignment));
+        if (!delivered) {
+          const q = casePending.get(payload.to) || [];
+          q.push(assignment);
+          casePending.set(payload.to, q);
+        }
+        assignmentId = id;
+      }
+      return { ...newCase, assignmentId, delivered };
+    }
+
+    case "action:case:ack": {
+      // Investigator acknowledges a case assignment (and optionally reports the
+      // local case number they opened). Route the ack back to the supervisor.
+      const a = caseAssignments.get(payload.assignmentId);
+      if (a) {
+        a.status = "acknowledged";
+        a.acknowledgedAt = new Date().toISOString();
+        a.ackCaseNumber = payload.caseNumber || a.caseNumber;
+        a.ackDeviceId = conn.deviceId;
+      }
+      logAudit({ actor: conn.actor, role: conn.role, action: "CASE_ACK", target: a ? a.caseNumber : payload.assignmentId, result: "OK" });
+      if (a) {
+        sendToDevice(a.fromDeviceId, "case:assign:ack", {
+          id: a.id, caseNumber: a.caseNumber, ackCaseNumber: a.ackCaseNumber,
+          by: conn.name, byBadge: conn.badge, at: a.acknowledgedAt,
+        });
+      }
+      return { ok: true };
+    }
+
+    case "get:case:assignments": {
+      const mine = [...caseAssignments.values()].filter(
+        (a) => a.to === conn.deviceId || a.fromDeviceId === conn.deviceId
+      );
+      return mine.sort((x, y) => y.sentAt.localeCompare(x.sentAt));
     }
 
     default:
@@ -542,6 +613,31 @@ function flushIcacPending(deviceId) {
   for (const a of q) sendToDevice(deviceId, "icac:assign:new", assignEnvelope(a));
 }
 
+// The event payload an investigator receives for a new CASE assignment. Carries
+// only the case number + supervisor-authored description/note/priority + who
+// sent it — never the investigator's own case content.
+function caseEnvelope(a) {
+  return {
+    id: a.id,
+    caseNumber: a.caseNumber,
+    description: a.description,
+    priority: a.priority,
+    note: a.note,
+    from: a.fromName,
+    fromBadge: a.fromBadge,
+    sentAt: a.sentAt,
+  };
+}
+
+// When an investigator (re)connects, flush any case assignments that arrived
+// while it was offline.
+function flushCasePending(deviceId) {
+  const q = casePending.get(deviceId);
+  if (!q || !q.length) return;
+  casePending.delete(deviceId);
+  for (const a of q) sendToDevice(deviceId, "case:assign:new", caseEnvelope(a));
+}
+
 // --- Wire protocol ---------------------------------------------------------
 function send(ws, obj) {
   try { ws.send(JSON.stringify(obj)); } catch { /* ignore */ }
@@ -652,6 +748,7 @@ wss.on("connection", (ws, req) => {
       logAudit({ actor: ws._actor, role: ws._role, action: existing ? "SESSION_OPEN" : "DEVICE_ENROLL", target: ws._deviceId, result: "OK" });
       if (ws._role === "supervisor") flushPending(ws._deviceId);
       if (ws._role === "investigator") flushIcacPending(ws._deviceId);
+      if (ws._role === "investigator") flushCasePending(ws._deviceId);
       return;
     }
 
