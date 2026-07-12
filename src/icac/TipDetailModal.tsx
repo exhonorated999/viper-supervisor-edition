@@ -3,6 +3,7 @@
 // metadata-level record only — no file bytes, and nothing here crosses the LAN.
 import { useEffect } from "react";
 import type { CyberTip } from "./types";
+import { getWarrants, loadWarrantPdf } from "./service";
 
 const CAT_LABEL: Record<string, string> = {
   A1: "CSAM — prepubescent",
@@ -52,6 +53,15 @@ export default function TipDetailModal({ tip, onClose }: { tip: CyberTip; onClos
   const dev = id.device_ids;
   const allDeviceIds = [...dev.imei, ...dev.mac, ...dev.gaid, ...dev.idfa, ...dev.other];
   const cats = tip.contraband.categories;
+  const warrant = tip.warrant_id ? getWarrants().find((w) => w.id === tip.warrant_id) : undefined;
+  const viewWarrantPdf = async () => {
+    if (!warrant) return;
+    const blob = await loadWarrantPdf(warrant.id);
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  };
   const hasIds =
     id.emails.length || id.usernames.length || id.phone_numbers.length ||
     id.ip_addresses.length || id.esp_user_ids.length || allDeviceIds.length;
@@ -95,6 +105,22 @@ export default function TipDetailModal({ tip, onClose }: { tip: CyberTip; onClos
             <Field label="Status" value={tip.assignment.status || "unassigned"} />
             <Field label="Note" value={tip.assignment.note || undefined} />
           </Section>
+
+          {warrant && (
+            <Section title="Wilson Warrant">
+              <Field label="Warrant #" value={<span className="mono">{warrant.warrant_number}</span>} />
+              <Field label="Court" value={warrant.court} />
+              <Field label="Judge" value={warrant.judge} />
+              <Field label="Signed" value={warrant.signed_at} />
+              <Field label="Covers" value={`${warrant.covered_tip_ids.length} CyberTip(s)`} />
+              {warrant.signed_pdf_key && (
+                <Field label="Signed PDF" value={
+                  <button className="tipd-link" onClick={viewWarrantPdf}>{warrant.signed_pdf_name || "View PDF"}</button>
+                } />
+              )}
+              {warrant.note && <Field label="Note" value={warrant.note} />}
+            </Section>
+          )}
 
           <Section title="Contraband (metadata only)">
             <Field label="Media files" value={tip.contraband.file_count} />

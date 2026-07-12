@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { ingestFiles, type IngestProgress } from "./import/ingest";
-import { addTips } from "./service";
+import { addTips, createWarrant, saveWarrantPdf } from "./service";
+import { dataService } from "../data/service";
 
 // Minimal ICAC import dialog: drag-and-drop or pick ZIPs / PDFs, run the
 // validated parser pipeline, and persist to the chosen storage location. The
@@ -12,6 +13,10 @@ export default function ImportDialog({ onClose, onDone }: { onClose: () => void;
   const [summary, setSummary] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Optional Wilson warrant applied to the whole batch on import.
+  const [warrantNo, setWarrantNo] = useState("");
+  const [warrantFile, setWarrantFile] = useState<File | null>(null);
+  const warrantRef = useRef<HTMLInputElement>(null);
 
   const run = useCallback(async (files: File[]) => {
     if (!files.length) return;
@@ -32,14 +37,24 @@ export default function ImportDialog({ onClose, onDone }: { onClose: () => void;
         return;
       }
       const { added, updated } = await addTips(tips);
-      setSummary(`${added} added, ${updated} updated · ${tips.length} report(s) parsed`);
+      // Attach the Wilson warrant (if provided) to every tip in this batch.
+      let warrantNote = "";
+      if (warrantNo.trim()) {
+        const w = await createWarrant(
+          { warrant_number: warrantNo.trim(), authoredBy: dataService.getIdentity().name || undefined },
+          tips.map((t) => t.id),
+        );
+        if (warrantFile) await saveWarrantPdf(w.id, warrantFile);
+        warrantNote = ` · warrant #${w.warrant_number} attached`;
+      }
+      setSummary(`${added} added, ${updated} updated · ${tips.length} report(s) parsed${warrantNote}`);
       onDone();
     } catch (e: any) {
       setError(String(e?.message || e) + " — set a storage location in Settings → Optional Modules.");
     } finally {
       setBusy(false);
     }
-  }, [onDone]);
+  }, [onDone, warrantNo, warrantFile]);
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -73,6 +88,32 @@ export default function ImportDialog({ onClose, onDone }: { onClose: () => void;
           />
           <div className="icac-dz-title">Drop CyberTip ZIPs or PDFs here</div>
           <div className="icac-dz-sub">or click to browse · contraband media is never opened</div>
+        </div>
+
+        <div className="icac-import-warrant">
+          <div className="icac-import-warrant-head">
+            <span>⚖️ Wilson warrant <span className="ic-dim">(optional — applied to this whole batch)</span></span>
+          </div>
+          <div className="icac-import-warrant-row">
+            <input
+              className="icac-import-warrant-no"
+              placeholder="Warrant number, e.g. 2026-SW-00481"
+              value={warrantNo}
+              onChange={(e) => setWarrantNo(e.target.value)}
+              disabled={busy}
+            />
+            <input
+              ref={warrantRef}
+              type="file"
+              accept=".pdf"
+              style={{ display: "none" }}
+              onChange={(e) => setWarrantFile(e.target.files?.[0] ?? null)}
+            />
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => warrantRef.current?.click()} disabled={busy}>
+              {warrantFile ? "Change PDF" : "Signed PDF"}
+            </button>
+            <span className="ic-dim ic-ellipsis" style={{ maxWidth: 160 }}>{warrantFile ? warrantFile.name : "No PDF"}</span>
+          </div>
         </div>
 
         {rows.length > 0 && (

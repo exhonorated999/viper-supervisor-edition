@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import { getIcacLocationLabel } from "./config";
 import { getIcacRole, onIcacConfigChange } from "./config";
-import { loadIcacIndex, getTips, onIcacDataChange, reopenTips } from "./service";
+import { loadIcacIndex, getTips, onIcacDataChange, reopenTips, getWarrants } from "./service";
 import { deriveDashboard, type DashboardData } from "./derive";
 import type { CyberTip } from "./types";
 import { isClosed } from "./types";
@@ -14,6 +14,8 @@ import AssignDialog from "./AssignDialog";
 import ExportDialog from "./ExportDialog";
 import TipDetailModal from "./TipDetailModal";
 import CloseDialog from "./CloseDialog";
+import WarrantDialog from "./WarrantDialog";
+import WarrantsDialog from "./WarrantsDialog";
 import VaultGate from "./VaultGate";
 import AuditDialog from "./AuditDialog";
 import IdsTray from "./ids/IdsTray";
@@ -38,6 +40,8 @@ export default function Icac() {
   const [filesSort, setFilesSort] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showClose, setShowClose] = useState(false);
+  const [showAttach, setShowAttach] = useState(false);
+  const [showWarrants, setShowWarrants] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
   const [showIds, setShowIds] = useState(false);
@@ -74,6 +78,15 @@ export default function Icac() {
   const doLock = () => { lock(); void logAudit("vault.lock"); };
 
   const data = useMemo<DashboardData>(() => deriveDashboard(tips, now), [tips, now]);
+
+  // Warrant number lookup for the queue chip. getWarrants() reads the live
+  // index, which is refreshed (via onIcacDataChange → setTips) after any
+  // warrant mutation, so keying on `tips` keeps this current.
+  const warrantNumById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const w of getWarrants()) m.set(w.id, w.warrant_number);
+    return m;
+  }, [tips]);
 
   const queue = useMemo(() => {
     const rank = (t: CyberTip) => {
@@ -140,6 +153,7 @@ export default function Icac() {
         vaultUnlocked={vault === "unlocked"}
         onLock={doLock}
         onAudit={() => setShowAudit(true)}
+        onWarrants={() => setShowWarrants(true)}
         onConnect={vault === "locked" ? undefined : () => setShowIds(true)}
       />
 
@@ -272,9 +286,14 @@ export default function Icac() {
                     </label>
                     <span className="icac-tb-spacer" />
                     {selectedIds.length > 0 && !readonly && (
-                      <button className="btn btn-danger btn-sm" onClick={() => setShowClose(true)}>
-                        Close ({selectedIds.length})
-                      </button>
+                      <>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setShowAttach(true)}>
+                          Attach warrant ({selectedIds.length})
+                        </button>
+                        <button className="btn btn-danger btn-sm" onClick={() => setShowClose(true)}>
+                          Close ({selectedIds.length})
+                        </button>
+                      </>
                     )}
                   </div>
                   <div className="icac-table-wrap">
@@ -304,7 +323,8 @@ export default function Icac() {
                           const a = t.assignment;
                           const closed = isClosed(t);
                           const st = closed ? "closed" : !a?.assigned_to ? "unassigned" : (a.status || "sent");
-                          const chip = closed ? "s-closed" : st === "acknowledged" ? "s-ok" : st === "sent" ? "s-warn" : "s-read";
+                          const chip = closed ? "s-closed" : st === "acknowledged" ? "s-ok" : st === "sent" ? "s-warn" : st === "offsystem" ? "s-manual" : "s-read";
+                          const stLabel = st === "offsystem" ? "off-system" : st;
                           const fc = t.contraband.file_count || 0;
                           return (
                             <tr key={t.id} className={closed ? "icac-row-closed" : ""}>
@@ -323,6 +343,11 @@ export default function Icac() {
                                 <button className="tipd-link mono" onClick={() => setDetailTip(t)} title="View extracted tip info">
                                   {t.cybertip_number || "—"}
                                 </button>
+                                {t.warrant_id && (
+                                  <span className="icac-warrant-chip" title={`Covered by Wilson warrant #${warrantNumById.get(t.warrant_id) || "?"}`}>
+                                    ⚖ #{warrantNumById.get(t.warrant_id) || "warrant"}
+                                  </span>
+                                )}
                               </td>
                               <td className="ic-dim ic-ellipsis" title={a?.assigned_to || ""}>{a?.assigned_to || "—"}</td>
                               <td>
@@ -330,7 +355,7 @@ export default function Icac() {
                               </td>
                               <td>
                                 <span className={`status-chip ${chip}`} title={closed ? `${t.disposition?.reason || "Closed"}${t.disposition?.note ? ` — ${t.disposition.note}` : ""}` : ""}>
-                                  {closed ? (t.disposition?.reason || "closed") : st}
+                                  {closed ? (t.disposition?.reason || "closed") : stLabel}
                                 </span>
                               </td>
                               <td style={{ textAlign: "right" }}>
@@ -472,6 +497,22 @@ export default function Icac() {
         />
       )}
 
+      {showAttach && (
+        <WarrantDialog
+          tipIds={selectedIds}
+          by={dataService.getIdentity().name || unit}
+          onClose={() => setShowAttach(false)}
+          onDone={() => { setTips([...getTips()]); setNow(Date.now()); setSelected(new Set()); }}
+        />
+      )}
+
+      {showWarrants && (
+        <WarrantsDialog
+          onClose={() => setShowWarrants(false)}
+          onChanged={() => { setTips([...getTips()]); setNow(Date.now()); }}
+        />
+      )}
+
       {showExport && (
         <ExportDialog
           tips={tips}
@@ -497,10 +538,10 @@ export default function Icac() {
 
 const tooltipStyle = { background: "#1a1f27", border: "1px solid #262d38", borderRadius: 8, color: "#e0e0e0", fontSize: 12 };
 
-function Header({ unit, location, onImport, importDisabled, role, vaultUnlocked, onLock, onAudit, onConnect }: {
+function Header({ unit, location, onImport, importDisabled, role, vaultUnlocked, onLock, onAudit, onWarrants, onConnect }: {
   unit: string; location: string | null; onImport: () => void; importDisabled?: boolean;
   role?: "command" | "readonly"; vaultUnlocked?: boolean; onLock?: () => void; onAudit?: () => void;
-  onConnect?: () => void;
+  onWarrants?: () => void; onConnect?: () => void;
 }) {
   return (
     <div className="topbar">
@@ -514,6 +555,7 @@ function Header({ unit, location, onImport, importDisabled, role, vaultUnlocked,
           <span className="dot" style={{ background: location ? "var(--green)" : "var(--amber)", boxShadow: location ? "0 0 8px var(--green)" : "none" }} />
           {location || "No storage location"}
         </div>
+        {onWarrants && <button className="btn btn-ghost" onClick={onWarrants} title="Wilson warrant registry">⚖️ Warrants</button>}
         {onAudit && <button className="btn btn-ghost" onClick={onAudit}>Audit Log</button>}
         {vaultUnlocked && onLock && <button className="btn btn-ghost" onClick={onLock} title="Lock the encrypted database">🔒 Lock</button>}
         {onConnect && <button className="btn btn-ghost icac-ids-btn" onClick={onConnect} title="Connect to the ICAC Data System">🌐 Connect to IDS</button>}

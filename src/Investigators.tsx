@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { dataService } from "./data/service";
 import type { InvestigatorWorkload } from "./types";
+import {
+  getManualInvestigators, removeManualInvestigator, onOffSystemChange,
+  type ManualInvestigator,
+} from "./data/offsystem";
+import ManualInvestigatorDialog from "./ManualInvestigatorDialog";
 
 const BAND_COLOR: Record<string, string> = {
   High: "var(--red)",
@@ -10,11 +15,15 @@ const BAND_COLOR: Record<string, string> = {
 
 export default function Investigators() {
   const [rows, setRows] = useState<InvestigatorWorkload[]>([]);
+  const [manual, setManual] = useState<ManualInvestigator[]>(() => getManualInvestigators());
+  const [editing, setEditing] = useState<ManualInvestigator | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
 
   const load = () => dataService.getWorkload().then(setRows);
 
   useEffect(() => {
     load();
+    const offOff = onOffSystemChange(() => setManual(getManualInvestigators()));
     let wasConnected = dataService.lan.state === "connected";
     const offState = dataService.lan.onState((s) => {
       const now = s === "connected";
@@ -25,10 +34,17 @@ export default function Investigators() {
       if (e.kind === "delivery:new" && e.payload?.dtype === "caseStatus") load();
     });
     return () => {
+      offOff();
       offState();
       offEvent();
     };
   }, []);
+
+  const removeManual = (m: ManualInvestigator) => {
+    if (window.confirm(`Remove off-system investigator "${m.name}"? Existing assignments keep their name.`)) {
+      removeManualInvestigator(m.id);
+    }
+  };
 
   return (
     <>
@@ -39,6 +55,46 @@ export default function Investigators() {
             Caseload and workload by investigator, aggregated from pushed case-status digests.
           </div>
         </div>
+        <button className="btn btn-ghost" onClick={() => setShowAdd(true)}>+ Off-System Investigator</button>
+      </div>
+
+      <div className="panel rise" style={{ animationDelay: "40ms", marginBottom: 18 }}>
+        <div className="panel-head">
+          <div className="panel-title">Off-System Investigators</div>
+          <span className="panel-meta">{manual.length} · not on Project VIPER</span>
+        </div>
+        {manual.length === 0 ? (
+          <div className="icac-panel-empty">
+            None yet. Add investigators who don't run Project V.I.P.E.R. so you can still assign
+            them CyberTips and cases. Tracked locally — never sent over the network.
+          </div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr><th>Name</th><th>Badge</th><th>Unit</th><th>Email</th><th></th></tr>
+            </thead>
+            <tbody>
+              {manual.map((m) => (
+                <tr key={m.id}>
+                  <td>
+                    <div className="inv-cell">
+                      <span className="inv-avatar">{(m.name || "?").split(/\s+/).map((s) => s[0]).slice(0, 2).join("").toUpperCase()}</span>
+                      <span>{m.name}</span>
+                      <span className="status-chip s-manual" style={{ marginLeft: 6 }}>off-system</span>
+                    </div>
+                  </td>
+                  <td className="ic-dim">{m.badge || "—"}</td>
+                  <td className="ic-dim">{m.unit || "—"}</td>
+                  <td className="ic-dim">{m.email || "—"}</td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setEditing(m)}>Edit</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => removeManual(m)}>Remove</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {rows.length === 0 ? (
@@ -133,6 +189,20 @@ export default function Investigators() {
             </table>
           </div>
         </>
+      )}
+
+      {showAdd && (
+        <ManualInvestigatorDialog
+          onClose={() => setShowAdd(false)}
+          onDone={() => setManual(getManualInvestigators())}
+        />
+      )}
+      {editing && (
+        <ManualInvestigatorDialog
+          existing={editing}
+          onClose={() => setEditing(null)}
+          onDone={() => setManual(getManualInvestigators())}
+        />
       )}
     </>
   );

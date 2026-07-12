@@ -94,7 +94,14 @@ export interface Assignment {
   assigned_to_device_id?: string | null;
   priority: "High" | "Medium" | "Low" | null;
   note: string | null;
-  status?: "unassigned" | "sent" | "acknowledged";
+  /**
+   * "sent"/"acknowledged" belong to the LAN (Project VIPER) path.
+   * "offsystem" marks a manual assignment to an investigator who does NOT run
+   * Project VIPER — tracked locally only, never pushed over the wire.
+   */
+  status?: "unassigned" | "sent" | "acknowledged" | "offsystem";
+  /** How the tip was assigned. Absent ⇒ legacy/LAN. */
+  mode?: "lan" | "manual";
   sentAt?: string;
   acknowledgedAt?: string;
 }
@@ -146,6 +153,12 @@ export interface CyberTip {
   /** Supervisor close-out state. Absent/undefined ⇒ open. */
   disposition?: Disposition;
 
+  /**
+   * Wilson warrant that authorizes opening/reviewing this tip. References a
+   * Warrant.id in IcacIndex.warrants. Absent ⇒ not yet covered by a warrant.
+   */
+  warrant_id?: string;
+
   // Provenance / QA
   source_file: string;
   source_doc_type: SourceDocType;
@@ -166,12 +179,44 @@ export interface SuspectProfile {
   notes: string;
 }
 
+/**
+ * A Wilson warrant — a judge's authorization to open/review one or more
+ * CyberTips. Authored in bulk (one warrant typically covers many downloaded
+ * tips). The signed PDF bytes live in the idb KV blob store (key
+ * `warrant-pdf:<id>`), NOT inline here, so the index stays lean. 100% local;
+ * never LAN-transmitted.
+ */
+export interface Warrant {
+  id: string;
+  /** Court-assigned warrant number (the primary court reference). */
+  warrant_number: string;
+  court?: string;
+  judge?: string;
+  /** ISO date the warrant was issued/applied for. */
+  issued_at?: string;
+  /** ISO date the judge signed. */
+  signed_at?: string;
+  /** Agency case / tracking number, if any. */
+  agency_case?: string;
+  /** Original filename of the uploaded signed PDF (blob in idb). */
+  signed_pdf_name?: string;
+  /** idb blob key for the signed PDF, when uploaded. */
+  signed_pdf_key?: string;
+  /** Local CyberTip ids this warrant authorizes. */
+  covered_tip_ids: string[];
+  note?: string;
+  authoredBy?: string;
+  createdAt: string;
+}
+
 /** The on-disk index document (icac_index.json). */
 export interface IcacIndex {
   version: 1;
   updated_at: string;
   tips: CyberTip[];
   suspects: SuspectProfile[];
+  /** Wilson warrants authored on this machine (optional for legacy indexes). */
+  warrants?: Warrant[];
 }
 
 /**
@@ -212,7 +257,7 @@ export function emptyContraband(): Contraband {
 }
 
 export function emptyIndex(): IcacIndex {
-  return { version: 1, updated_at: new Date().toISOString(), tips: [], suspects: [] };
+  return { version: 1, updated_at: new Date().toISOString(), tips: [], suspects: [], warrants: [] };
 }
 
 /** True when a supervisor has closed this tip (hidden from active views). */

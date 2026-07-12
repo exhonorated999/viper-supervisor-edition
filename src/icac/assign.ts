@@ -69,6 +69,29 @@ export async function assignCyberTip(tip: CyberTip, input: AssignInput): Promise
   }
 }
 
+/**
+ * Assign a CyberTip to a MANUAL / off-system investigator (one who does NOT run
+ * Project VIPER). This is a purely LOCAL record — NOTHING is pushed over the
+ * LAN, there is no acknowledgement loop, and the status is fixed at "offsystem".
+ */
+export async function assignManual(
+  tip: CyberTip,
+  input: { name: string; priority: Assignment["priority"]; note: string },
+): Promise<void> {
+  tip.assignment = {
+    assigned_to: input.name,
+    assigned_to_device_id: null,
+    priority: input.priority,
+    note: input.note || null,
+    status: "offsystem",
+    mode: "manual",
+    sentAt: new Date().toISOString(),
+    acknowledgedAt: undefined,
+  };
+  await updateTip(tip);
+  void logAudit("assign", `CT ${tip.cybertip_number || "(no #)"} → ${input.name} (off-system)`);
+}
+
 // --- ack routing -----------------------------------------------------------
 // Fold an investigator's acknowledgement into the matching local tip. The node
 // routes an "icac:assign:ack" event carrying only the cybertip number, the

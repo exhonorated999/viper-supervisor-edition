@@ -28,6 +28,10 @@ export type AuditAction =
   | "tip.edit"
   | "tip.close"
   | "tip.reopen"
+  | "warrant.create"
+  | "warrant.attach"
+  | "warrant.update"
+  | "warrant.delete"
   | "role.change"
   | "audit.clear"
   | "ids.download"
@@ -126,6 +130,10 @@ export const AUDIT_LABELS: Record<AuditAction, string> = {
   "tip.edit": "Tip edited",
   "tip.close": "CyberTip(s) closed",
   "tip.reopen": "CyberTip(s) reopened",
+  "warrant.create": "Wilson warrant created",
+  "warrant.attach": "Warrant attached to CyberTip(s)",
+  "warrant.update": "Wilson warrant updated",
+  "warrant.delete": "Wilson warrant deleted",
   "role.change": "Access role changed",
   "audit.clear": "Audit log cleared",
   "ids.download": "IDS download captured",

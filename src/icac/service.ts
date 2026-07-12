@@ -3,10 +3,11 @@
 // (deduped), persists, and notifies subscribers. Nothing here touches the LAN.
 // ---------------------------------------------------------------------------
 
-import type { CyberTip, IcacIndex, StoredDoc, CloseReason } from "./types";
+import type { CyberTip, IcacIndex, StoredDoc, CloseReason, Warrant } from "./types";
 import { emptyIndex, isVaultEnvelope } from "./types";
 import { getIcacStorage } from "./storage/index";
 import { vaultState, encryptIndex, decryptEnvelope } from "./crypto/vault";
+import { idbGet, idbSet, idbDel } from "./storage/idb";
 import { logAudit } from "./audit";
 
 let index: IcacIndex | null = null;
@@ -79,6 +80,8 @@ export async function addTips(incoming: CyberTip[]): Promise<{ added: number; up
       // Preserve a supervisor's close-out decision across re-imports so a
       // resent report does not silently reopen a closed tip.
       if (prev.disposition) t.disposition = prev.disposition;
+      // Preserve the Wilson warrant linkage across re-imports.
+      if (prev.warrant_id) t.warrant_id = prev.warrant_id;
       t.id = prev.id;
       byKey.set(k, t);
       updated++;
@@ -165,4 +168,131 @@ export async function persistCurrent(): Promise<void> {
   const ix = await loadIcacIndex();
   await getIcacStorage().writeIndex(await toStored(ix));
   notify();
+}
+
+// --- Wilson warrants -------------------------------------------------------
+// A judge's authorization to open/review CyberTips. Authored in bulk. Metadata
+// lives in the (optionally encrypted) index; the signed PDF bytes live in the
+// idb KV blob store keyed `warrant-pdf:<id>`. 100% local — never LAN-sent.
+
+const WARRANT_PDF_PREFIX = "warrant-pdf:";
+
+interface StoredPdf { name: string; type: string; bytes: ArrayBuffer; }
+
+async function persistIndex(ix: IcacIndex): Promise<void> {
+  ix.updated_at = new Date().toISOString();
+  index = ix;
+  await getIcacStorage().writeIndex(await toStored(ix));
+  notify();
+}
+
+function genId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** All warrants authored on this machine. */
+export function getWarrants(): Warrant[] {
+  return index?.warrants ?? [];
+}
+
+/** Create a warrant and (optionally) cover the given tip ids. */
+export async function createWarrant(
+  data: Omit<Warrant, "id" | "covered_tip_ids" | "createdAt"> & { covered_tip_ids?: string[] },
+  tipIds: string[] = [],
+): Promise<Warrant> {
+  const ix = await loadIcacIndex();
+  if (!ix.warrants) ix.warrants = [];
+  const covered = Array.from(new Set([...(data.covered_tip_ids ?? []), ...tipIds]));
+  const warrant: Warrant = {
+    ...data,
+    id: genId("W"),
+    covered_tip_ids: covered,
+    createdAt: new Date().toISOString(),
+  };
+  ix.warrants.push(warrant);
+  for (const t of ix.tips) if (covered.includes(t.id)) t.warrant_id = warrant.id;
+  await persistIndex(ix);
+  void logAudit("warrant.create", `#${warrant.warrant_number || "(no #)"} · ${covered.length} tip(s)`);
+  return warrant;
+}
+
+/** Attach an existing warrant to more tips (idempotent). */
+export async function attachWarrant(tipIds: string[], warrantId: string): Promise<number> {
+  const ix = await loadIcacIndex();
+  const w = ix.warrants?.find((x) => x.id === warrantId);
+  if (!w) return 0;
+  const set = new Set(w.covered_tip_ids);
+  let n = 0;
+  for (const t of ix.tips) {
+    if (!tipIds.includes(t.id)) continue;
+    if (t.warrant_id !== warrantId) { t.warrant_id = warrantId; n++; }
+    set.add(t.id);
+  }
+  w.covered_tip_ids = [...set];
+  await persistIndex(ix);
+  if (n) void logAudit("warrant.attach", `#${w.warrant_number || "(no #)"} → ${n} tip(s)`);
+  return n;
+}
+
+/** Remove the warrant linkage from the given tips (does not delete the warrant). */
+export async function detachWarrant(tipIds: string[]): Promise<number> {
+  const ix = await loadIcacIndex();
+  const set = new Set(tipIds);
+  let n = 0;
+  for (const t of ix.tips) {
+    if (set.has(t.id) && t.warrant_id) {
+      const w = ix.warrants?.find((x) => x.id === t.warrant_id);
+      if (w) w.covered_tip_ids = w.covered_tip_ids.filter((id) => id !== t.id);
+      t.warrant_id = undefined;
+      n++;
+    }
+  }
+  if (n) await persistIndex(ix);
+  return n;
+}
+
+/** Update warrant metadata (not its PDF or coverage). */
+export async function updateWarrant(w: Warrant): Promise<void> {
+  const ix = await loadIcacIndex();
+  const i = ix.warrants?.findIndex((x) => x.id === w.id) ?? -1;
+  if (i < 0 || !ix.warrants) return;
+  ix.warrants[i] = w;
+  await persistIndex(ix);
+  void logAudit("warrant.update", `#${w.warrant_number || "(no #)"}`);
+}
+
+/** Delete a warrant, clear linkage on covered tips, and drop its signed PDF. */
+export async function deleteWarrant(id: string): Promise<void> {
+  const ix = await loadIcacIndex();
+  const w = ix.warrants?.find((x) => x.id === id);
+  if (!w) return;
+  for (const t of ix.tips) if (t.warrant_id === id) t.warrant_id = undefined;
+  ix.warrants = (ix.warrants ?? []).filter((x) => x.id !== id);
+  await persistIndex(ix);
+  try { await idbDel(WARRANT_PDF_PREFIX + id); } catch { /* ignore */ }
+  void logAudit("warrant.delete", `#${w.warrant_number || "(no #)"}`);
+}
+
+/** Store the signed PDF for a warrant (blob in idb; metadata on the warrant). */
+export async function saveWarrantPdf(id: string, file: File): Promise<void> {
+  const ix = await loadIcacIndex();
+  const w = ix.warrants?.find((x) => x.id === id);
+  if (!w) return;
+  const bytes = await file.arrayBuffer();
+  const rec: StoredPdf = { name: file.name, type: file.type || "application/pdf", bytes };
+  await idbSet(WARRANT_PDF_PREFIX + id, rec);
+  w.signed_pdf_name = file.name;
+  w.signed_pdf_key = WARRANT_PDF_PREFIX + id;
+  await persistIndex(ix);
+}
+
+/** Load a warrant's signed PDF as a Blob (or null when none stored). */
+export async function loadWarrantPdf(id: string): Promise<Blob | null> {
+  try {
+    const rec = await idbGet<StoredPdf>(WARRANT_PDF_PREFIX + id);
+    if (!rec || !rec.bytes) return null;
+    return new Blob([rec.bytes], { type: rec.type || "application/pdf" });
+  } catch {
+    return null;
+  }
 }
