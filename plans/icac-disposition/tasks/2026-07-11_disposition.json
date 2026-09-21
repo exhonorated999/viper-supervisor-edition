@@ -1,0 +1,37 @@
+[
+  {
+    "content": "types.ts: add Disposition/CloseReason + disposition field + isClosed()",
+    "id": "1",
+    "status": "completed"
+  },
+  {
+    "content": "service.ts: closeTips()/reopenTips() bulk + preserve disposition on re-import",
+    "id": "2",
+    "status": "completed"
+  },
+  {
+    "content": "derive.ts: hide closed tips from active views (keep total = all imported)",
+    "id": "3",
+    "status": "completed"
+  },
+  {
+    "content": "CloseDialog.tsx: bulk close-out reason modal",
+    "id": "4",
+    "status": "completed"
+  },
+  {
+    "content": "Icac.tsx: Assignment Queue toolbar (min-files filter, sortable Files col, Show closed, bulk-close selection, reopen)",
+    "id": "5",
+    "status": "completed"
+  },
+  {
+    "content": "ImportDialog: multi-file badge; TipDetailModal: disposition section",
+    "id": "6",
+    "status": "completed"
+  },
+  {
+    "content": "styles.css + tsc verify",
+    "id": "7",
+    "status": "completed"
+  }
+]

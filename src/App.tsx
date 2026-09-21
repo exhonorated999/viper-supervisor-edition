@@ -5,6 +5,7 @@ import Settings from "./Settings";
 import Cases from "./Cases";
 import Investigators from "./Investigators";
 import OpsPlans from "./OpsPlans";
+import Reports from "./Reports";
 import Icac from "./icac/Icac";
 import { isIcacEnabled, onIcacConfigChange } from "./icac/config";
 import { dataService } from "./data/service";
@@ -169,6 +170,8 @@ export default function App() {
           <Investigators />
         ) : active === "OPS Plans" ? (
           <OpsPlans />
+        ) : active === "Reports" ? (
+          <Reports />
         ) : active === "ICAC" ? (
           <Icac />
         ) : (

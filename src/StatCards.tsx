@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { METRIC_CATALOG, metricDef, formatMetricValue } from "./data/metrics";
 import { setCardMetric } from "./data/prefs";
+import { periodTag, periodLabel, type PeriodMetrics, type SecondaryPeriod } from "./data/periods";
 import { IconSettings } from "./icons";
 
 // A dropdown menu listing every catalog metric; highlights the current one.
@@ -75,15 +76,19 @@ function MetricMenu({
 
 /**
  * The top row of configurable stat cards. Each card shows a metric from the
- * catalog; the gear opens a menu to swap which metric that slot displays.
- * Selections persist via data/prefs (localStorage).
+ * catalog as TWO figures — calendar month to date, and the supervisor's chosen
+ * secondary period (quarter or year) — with the lifetime total as the caption.
+ * The gear opens a menu to swap which metric that slot displays; selections
+ * persist via data/prefs (localStorage).
  */
 export default function StatCards({
   prefs,
-  values,
+  periods,
+  secondary,
 }: {
   prefs: string[];
-  values: Record<string, number>;
+  periods: PeriodMetrics;
+  secondary: SecondaryPeriod;
 }) {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   // Anchor element for the open menu's portal positioning.
@@ -106,7 +111,14 @@ export default function StatCards({
     >
       {prefs.map((key, i) => {
         const def = metricDef(key);
-        const has = values[key] != null;
+        // Always two figures, like the VIPER investigator dashboard:
+        // month-to-date on the left, the supervisor's chosen range on the
+        // right. A metric with no period dimension investigator-side (e.g.
+        // "active missing persons" is a standing count, not an event) is
+        // omitted from the period buckets — show an em dash, not a bogus 0.
+        const monthVal = periods.buckets.month[key];
+        const secVal = periods.buckets[secondary][key];
+
         return (
           <div
             key={i}
@@ -137,8 +149,17 @@ export default function StatCards({
                 )}
               </div>
             </div>
-            <div className="metric-value">{formatMetricValue(key, values[key])}</div>
-            <div className="metric-sub">{has ? def.subtitle : "Awaiting unit data"}</div>
+
+            <div className="metric-dual">
+              <div className="metric-slot" title={periodLabel("month", periods.labels)}>
+                <div className="metric-value">{formatMetricValue(key, monthVal)}</div>
+                <div className="metric-period">THIS MONTH</div>
+              </div>
+              <div className="metric-slot alt" title={periodLabel(secondary, periods.labels)}>
+                <div className="metric-value">{formatMetricValue(key, secVal)}</div>
+                <div className="metric-period">{periodTag(secondary, periods.labels)}</div>
+              </div>
+            </div>
           </div>
         );
       })}

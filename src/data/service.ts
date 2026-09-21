@@ -30,7 +30,10 @@ import { lanClient } from "../lan/client";
 import { loadIdentity, saveIdentity } from "./identity";
 import type { SupervisorIdentity } from "./identity";
 import { getDeviceKey, getDeviceIdSync } from "../lan/devicekey";
-import { deriveStatsFromDelivery, deriveCasesFromDigest, deriveWorkloadFromDigest, deriveOpsPlanFromDelivery, aggregateMetricValues } from "./derive";
+import { deriveStatsFromDelivery, deriveCasesFromDigest, deriveWorkloadFromDigest, deriveOpsPlanFromDelivery, aggregateMetricPeriods } from "./derive";
+import { emptyPeriodMetrics, type PeriodMetrics } from "./periods";
+
+export type { PeriodMetrics, PeriodKey, SecondaryPeriod } from "./periods";
 
 export type { SupervisorIdentity } from "./identity";
 
@@ -83,6 +86,7 @@ type Cache = {
   opsSigned?: OpsPlan[];
   alerts?: Alert[];
   metricValues?: Record<string, number>;
+  metricPeriods?: PeriodMetrics;
 };
 
 let cache: Cache = loadCache();
@@ -266,15 +270,33 @@ export const dataService = {
    * deliveries when offline; empty object if nothing has been pushed yet.
    */
   async getMetricValues(): Promise<Record<string, number>> {
+    const periods = await this.getMetricPeriods();
+    return periods.buckets.allTime;
+  },
+
+  /**
+   * Same unit-wide metrics, bucketed by CALENDAR reporting period
+   * (month / quarter / year / all-time) so the dashboard can show month-to-date
+   * beside a QTD or YTD figure. Investigators running a VIPER build that
+   * predates period support contribute to all-time only and are listed in
+   * `staleSenders`.
+   */
+  async getMetricPeriods(): Promise<PeriodMetrics> {
     await lanClient.waitForConnected(2500);
     try {
       const deliveries = await lanClient.request<Delivery[]>("get:deliveries");
-      const values = aggregateMetricValues(deliveries);
-      cache.metricValues = values;
+      const periods = aggregateMetricPeriods(deliveries);
+      cache.metricValues = periods.buckets.allTime;
+      cache.metricPeriods = periods;
       persist();
-      return values;
+      return periods;
     } catch {
-      return (cache.metricValues as Record<string, number>) ?? {};
+      const cached = cache.metricPeriods as PeriodMetrics | undefined;
+      if (cached?.buckets) return cached;
+      // Very old cache (all-time only) — surface it as the all-time bucket.
+      const fallback = emptyPeriodMetrics();
+      fallback.buckets.allTime = (cache.metricValues as Record<string, number>) ?? {};
+      return fallback;
     }
   },
 

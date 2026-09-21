@@ -1,0 +1,32 @@
+[
+  {
+    "content": "[A-1] types.ts: Warrant, IcacIndex.warrants, CyberTip.warrant_id, Assignment.mode/offsystem; guard emptyIndex/materialize",
+    "id": "A1",
+    "status": "completed"
+  },
+  {
+    "content": "[A-2] service.ts + audit.ts: warrant CRUD, PDF blob save/load via idb, preserve warrant_id on re-import, audit actions",
+    "id": "A2",
+    "status": "completed"
+  },
+  {
+    "content": "[B-1] src/data/offsystem.ts: manual investigators + manual cases localStorage store + onOffSystemChange",
+    "id": "B1",
+    "status": "completed"
+  },
+  {
+    "content": "[C-1] Warrant UI: WarrantDialog.tsx, WarrantsDialog+coverage export, ImportDialog section, TipDetailModal + queue chip",
+    "id": "C1",
+    "status": "completed"
+  },
+  {
+    "content": "[C-2] Off-system UI: AssignDialog merged picker + assign.ts manual branch, Investigators section, Cases off-system section",
+    "id": "C2",
+    "status": "completed"
+  },
+  {
+    "content": "[V-1] tsc + npm run build clean",
+    "id": "V1",
+    "status": "completed"
+  }
+]

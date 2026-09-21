@@ -26,6 +26,7 @@ import type {
   RiskLevel,
   TrendPoint,
 } from "../types";
+import { emptyPeriodMetrics, type PeriodMetrics } from "./periods";
 
 /** Normalise an arbitrary risk/priority label to a dashboard RiskLevel. */
 function toRiskLevel(raw: unknown): RiskLevel {
@@ -410,23 +411,93 @@ export function extractMetricMap(body: any): Record<string, number> {
  * delivery. `deliveries` is the raw inbox list; only dtype "stats" is used.
  */
 export function aggregateMetricValues(deliveries: any[]): Record<string, number> {
-  const stats = (Array.isArray(deliveries) ? deliveries : [])
-    .filter((d) => d && d.dtype === "stats" && d.body)
-    .sort((a, b) => String(b.sentAt).localeCompare(String(a.sentAt)));
-
-  // Keep only the most-recent snapshot per sender device.
-  const latestPerSender = new Map<string, any>();
-  for (const d of stats) {
-    const sender = String(d.fromDeviceId || d.from || d.id);
-    if (!latestPerSender.has(sender)) latestPerSender.set(sender, d);
-  }
-
   const total: Record<string, number> = {};
-  for (const d of latestPerSender.values()) {
+  for (const d of latestStatsPerSender(deliveries)) {
     const map = extractMetricMap(d.body);
     for (const [k, v] of Object.entries(map)) {
       total[k] = (total[k] || 0) + v;
     }
   }
   return total;
+}
+
+// ---------------------------------------------------------------------------
+// Period-bucketed metric values.
+//
+// An updated investigator push carries `metricsByPeriod`:
+//   { buckets: { allTime, month, quarter, year }, periods: { month:{label,…} } }
+// Every bucket is summed independently across the unit, exactly like the
+// all-time totals. Investigators still running a pre-period VIPER build send
+// only the flat `metrics` map — their numbers land in all-time and they are
+// reported in `staleSenders` so the UI can say *why* a period figure looks
+// low rather than silently under-reporting.
+// ---------------------------------------------------------------------------
+
+/** Reduce the inbox to the most-recent stats delivery per sender device. */
+function latestStatsPerSender(deliveries: any[]): any[] {
+  const stats = (Array.isArray(deliveries) ? deliveries : [])
+    .filter((d) => d && d.dtype === "stats" && d.body)
+    .sort((a, b) => String(b.sentAt).localeCompare(String(a.sentAt)));
+
+  const latestPerSender = new Map<string, any>();
+  for (const d of stats) {
+    const sender = String(d.fromDeviceId || d.from || d.id);
+    if (!latestPerSender.has(sender)) latestPerSender.set(sender, d);
+  }
+  return [...latestPerSender.values()];
+}
+
+/** Coerce one wire bucket into a clean { key -> number } map. */
+function cleanBucket(raw: any): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [k, v] of Object.entries(raw)) {
+    const n = num(v);
+    if (Number.isFinite(n)) out[k] = n;
+  }
+  return out;
+}
+
+export function aggregateMetricPeriods(deliveries: any[]): PeriodMetrics {
+  const result = emptyPeriodMetrics();
+  const senders = latestStatsPerSender(deliveries);
+  const stale: string[] = [];
+  let sawPeriods = false;
+
+  for (const d of senders) {
+    const bp = d.body?.metricsByPeriod;
+    const buckets = bp?.buckets;
+
+    // All-time always comes from the existing extractor so the legacy
+    // headline/byStatus backfill keeps working for old senders.
+    const allTime = extractMetricMap(d.body);
+    for (const [k, v] of Object.entries(allTime)) {
+      result.buckets.allTime[k] = (result.buckets.allTime[k] || 0) + v;
+    }
+
+    if (buckets && typeof buckets === "object") {
+      sawPeriods = true;
+      (["month", "quarter", "year"] as const).forEach((p) => {
+        const b = cleanBucket(buckets[p]);
+        for (const [k, v] of Object.entries(b)) {
+          result.buckets[p][k] = (result.buckets[p][k] || 0) + v;
+        }
+      });
+      // First sender with labels sets the wording for the whole unit; all
+      // investigators compute the same calendar windows so they agree.
+      const labels = bp?.periods;
+      if (labels) {
+        if (labels.month?.label) result.labels.month = String(labels.month.label);
+        if (labels.quarter?.label) result.labels.quarter = String(labels.quarter.label);
+        if (labels.year?.label) result.labels.year = String(labels.year.label);
+      }
+    } else {
+      const who = String(d.from || d.fromDeviceId || "investigator");
+      if (!stale.includes(who)) stale.push(who);
+    }
+  }
+
+  result.hasPeriodData = sawPeriods;
+  result.staleSenders = stale;
+  return result;
 }

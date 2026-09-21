@@ -10,9 +10,11 @@
 // ---------------------------------------------------------------------------
 
 import { METRIC_BY_KEY } from "./metrics";
+import type { SecondaryPeriod } from "./periods";
 
 const CARD_KEY = "viperSupCardPreferences";
 const QUICK_KEY = "viperSupQuickStats";
+const PERIOD_KEY = "viperSupSecondaryPeriod";
 const EVT = "viper-sup-prefs-change";
 
 /** Default top stat cards (5 across the row). */
@@ -85,13 +87,41 @@ export function setQuickStats(keys: string[]) {
   writeArr(QUICK_KEY, keys.slice(0, QUICK_STATS_COUNT));
 }
 
+// --- Secondary reporting period -------------------------------------------
+// Cards and Quick Stats always show the calendar month to date. This is the
+// SECOND figure beside it — the supervisor's choice of Quarter, Year or
+// All time (chosen with the toggle in the dashboard header).
+
+export function getSecondaryPeriod(): SecondaryPeriod {
+  try {
+    const v = localStorage.getItem(PERIOD_KEY);
+    if (v === "year" || v === "allTime") return v;
+    return "quarter";
+  } catch {
+    return "quarter";
+  }
+}
+
+export function setSecondaryPeriod(p: SecondaryPeriod) {
+  try {
+    localStorage.setItem(PERIOD_KEY, p);
+  } catch {
+    /* ignore quota */
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(EVT));
+  } catch {
+    /* non-DOM env */
+  }
+}
+
 // --- Change subscription --------------------------------------------------
 
 /** Subscribe to any preference change (this tab or another). Returns unsub. */
 export function onPrefsChange(cb: () => void): () => void {
   const local = () => cb();
   const storage = (e: StorageEvent) => {
-    if (e.key === CARD_KEY || e.key === QUICK_KEY) cb();
+    if (e.key === CARD_KEY || e.key === QUICK_KEY || e.key === PERIOD_KEY) cb();
   };
   window.addEventListener(EVT, local);
   window.addEventListener("storage", storage);

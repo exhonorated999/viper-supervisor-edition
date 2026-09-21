@@ -1,0 +1,42 @@
+[
+  {
+    "content": "Metric catalog + prefs store",
+    "id": "1",
+    "status": "completed"
+  },
+  {
+    "content": "Extend stats over LAN: derive metrics map + service.getMetricValues()",
+    "id": "2",
+    "status": "completed"
+  },
+  {
+    "content": "Dashboard: configurable gear cards + Quick Stats band + Configure modal",
+    "id": "3",
+    "status": "completed"
+  },
+  {
+    "content": "Registration module + first-run modal + Settings re-register",
+    "id": "4",
+    "status": "completed"
+  },
+  {
+    "content": "Bug report modal wired into sidebar, POST to Intellect-LE + self-heal",
+    "id": "5",
+    "status": "completed"
+  },
+  {
+    "content": "Quick Reports active: pdf-lib generators for all 5 reports",
+    "id": "6",
+    "status": "completed"
+  },
+  {
+    "content": "VIPER push extension: buildStatsSnapshot emits full metrics map (code done, release gated)",
+    "id": "7",
+    "status": "completed"
+  },
+  {
+    "content": "Supervisor tsc + vite build validated. Packaging installer gated on user go-ahead",
+    "id": "8",
+    "status": "completed"
+  }
+]

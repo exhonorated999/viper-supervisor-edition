@@ -61,6 +61,17 @@ export const fsAccessStorage: IcacStorage = {
     setIcacLocationLabel(null);
   },
 
+  // Acquire readwrite permission NOW, while the caller still holds transient
+  // user activation. requestPermission() throws "User activation is required"
+  // if it runs after a long async gap (e.g. parsing a big import batch), so the
+  // UI calls this synchronously inside the click/drop handler, before any await.
+  // Returns true if no handle is set yet (the write path reports that instead).
+  async ensureWritable() {
+    const handle = await getHandle();
+    if (!handle) return true;
+    return ensurePermission(handle);
+  },
+
   async readIndex() {
     const handle = await getHandle();
     if (!handle) return emptyIndex();

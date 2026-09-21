@@ -1,0 +1,27 @@
+[
+  {
+    "content": "[node] action:case:assign delivery + action:case:ack + case pending queue + allowed writes",
+    "id": "N1",
+    "status": "completed"
+  },
+  {
+    "content": "[sup renderer] service.assignCase target deviceId + getInvestigators",
+    "id": "R1",
+    "status": "completed"
+  },
+  {
+    "content": "[sup renderer] Dashboard AssignCase combined dropdown + branch online/manual",
+    "id": "R2",
+    "status": "completed"
+  },
+  {
+    "content": "[VIPER] supervisor-link case:assign:new inbox + Acknowledge & Launch + case:ack",
+    "id": "V1",
+    "status": "completed"
+  },
+  {
+    "content": "Rebuild sidecar + repackage installer + verify contract",
+    "id": "B1",
+    "status": "completed"
+  }
+]

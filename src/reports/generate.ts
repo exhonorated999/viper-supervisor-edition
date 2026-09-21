@@ -9,6 +9,8 @@
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from "pdf-lib";
 import type { CaseStatus, InvestigatorWorkload, OpsPlan, CaseBreakdownSlice } from "../types";
 import { metricDef, formatMetricValue } from "../data/metrics";
+import { periodLabel, type PeriodKey, type PeriodMetrics } from "../data/periods";
+import { reportFilename, type ReportPayload, type SectionId } from "./payload";
 
 const CYAN = rgb(0.0, 0.717, 0.764);
 const INK = rgb(0.11, 0.13, 0.16);
@@ -20,7 +22,14 @@ export type ReportKind = "monthly" | "ytd" | "investigator" | "distribution" | "
 
 export interface ReportData {
   supervisor: { name?: string; badge?: string; unit?: string };
+  /** All-time unit totals (kept for the non-period report kinds). */
   metricValues: Record<string, number>;
+  /**
+   * Period-bucketed unit metrics. The Monthly Summary reports month-to-date
+   * and the YTD Overview reports year-to-date off this, each with the lifetime
+   * total alongside, so a printed report matches the dashboard exactly.
+   */
+  periods?: PeriodMetrics;
   cardKeys: string[];
   quickKeys: string[];
   breakdown: CaseBreakdownSlice[];
@@ -163,27 +172,55 @@ class Doc {
   }
 }
 
-function metricRows(d: ReportData, keys: string[]): { label: string; value: string }[] {
-  return keys.map((k) => ({
-    label: metricDef(k).label,
-    value: formatMetricValue(k, d.metricValues[k] ?? 0),
-  }));
+/**
+ * Metric rows for a report. When the report is period-scoped (Monthly / YTD)
+ * and the unit has period data, each row reads "<period value>  (all time N)"
+ * so the printed figure matches the dashboard card instead of silently being
+ * a lifetime total under a "Month to Date" heading.
+ */
+function metricRows(
+  d: ReportData,
+  keys: string[],
+  period: PeriodKey = "allTime"
+): { label: string; value: string }[] {
+  const usePeriod = period !== "allTime" && !!d.periods?.hasPeriodData;
+  return keys.map((k) => {
+    const label = metricDef(k).label;
+    if (!usePeriod) {
+      return { label, value: formatMetricValue(k, d.metricValues[k] ?? 0) };
+    }
+    const pv = d.periods!.buckets[period][k];
+    const at = d.periods!.buckets.allTime[k] ?? d.metricValues[k] ?? 0;
+    if (pv == null) {
+      // No period dimension for this metric — report the lifetime figure and
+      // say so, rather than printing a zero.
+      return { label, value: `${formatMetricValue(k, at)} (all time)` };
+    }
+    return { label, value: `${formatMetricValue(k, pv)}   (all time ${formatMetricValue(k, at)})` };
+  });
 }
 
 async function build(kind: ReportKind, d: ReportData): Promise<Uint8Array> {
   const meta = REPORT_META[kind];
+  // Monthly/YTD carry a real period; name the exact window in the header.
+  const reportPeriod: PeriodKey =
+    kind === "monthly" ? "month" : kind === "ytd" ? "year" : "allTime";
+  const periodText =
+    reportPeriod !== "allTime" && d.periods
+      ? `${meta.period} — ${periodLabel(reportPeriod, d.periods.labels)}`
+      : meta.period;
   const who = [d.supervisor.name, d.supervisor.badge && `Badge ${d.supervisor.badge}`, d.supervisor.unit]
     .filter(Boolean)
     .join("  ·  ");
-  const sub = `${meta.period}  ·  Generated ${new Date().toLocaleString()}${who ? "  ·  " + who : ""}`;
+  const sub = `${periodText}  ·  Generated ${new Date().toLocaleString()}${who ? "  ·  " + who : ""}`;
   const doc = new Doc(meta.title, sub);
   await doc.init();
 
   if (kind === "monthly" || kind === "ytd") {
     doc.sectionHeader("Key Metrics");
-    doc.keyValueGrid(metricRows(d, d.cardKeys.length ? d.cardKeys : d.quickKeys));
+    doc.keyValueGrid(metricRows(d, d.cardKeys.length ? d.cardKeys : d.quickKeys, reportPeriod));
     doc.sectionHeader("Quick Stats");
-    doc.keyValueGrid(metricRows(d, d.quickKeys));
+    doc.keyValueGrid(metricRows(d, d.quickKeys, reportPeriod));
     doc.sectionHeader("Case Status Breakdown");
     if (d.breakdown.length) {
       doc.table(
@@ -267,4 +304,178 @@ export async function generateReport(kind: ReportKind, d: ReportData): Promise<s
   const filename = `VIPER_Supervisor_${REPORT_META[kind].title.replace(/\s+/g, "_")}_${date}.pdf`;
   download(bytes, filename);
   return filename;
+}
+
+// ---------------------------------------------------------------------------
+// Reports page renderer — driven by a fully-resolved ReportPayload.
+//
+// The Quick Reports path above builds straight from live dashboard state. The
+// Reports page instead resolves everything first (scope, filters, withheld
+// figures, caveats) into a ReportPayload, then hands the SAME object to the
+// preview, this PDF renderer and the interactive HTML exporter — so the file
+// on disk always matches what was on screen.
+// ---------------------------------------------------------------------------
+
+function renderSection(doc: Doc, id: SectionId, p: ReportPayload) {
+  if (id === "metrics") {
+    doc.sectionHeader("Unit Metrics");
+    if (!p.metrics.length) {
+      doc.paragraph("No metrics selected.");
+      return;
+    }
+    const anyWithheld = p.metrics.some((m) => m.value == null);
+    doc.table(
+      ["Metric", p.scope.label, "All time"],
+      [doc.W - 260, 140, 120],
+      p.metrics.map((m) => [m.label, m.value ?? `— ${m.note ? `(${m.note})` : ""}`.trim(), m.allTime])
+    );
+    if (anyWithheld) {
+      doc.paragraph(
+        "An em dash means the figure has no meaning for this window — it is withheld rather than reported as zero."
+      );
+    }
+    return;
+  }
+
+  if (id === "activity") {
+    doc.sectionHeader(`Case Activity — ${p.scope.label}`);
+    const rows = p.activity.filter((a) => a.key !== "totalEvents");
+    if (p.activity.every((a) => a.value === 0)) {
+      doc.paragraph("No dated case activity in this window.");
+      return;
+    }
+    doc.keyValueGrid(rows.map((a) => ({ label: a.label, value: String(a.value) })));
+    return;
+  }
+
+  if (id === "trend") {
+    doc.sectionHeader("Activity Trend");
+    if (!p.series.length) {
+      doc.paragraph("Not enough dated activity to plot a trend.");
+      return;
+    }
+    doc.table(
+      ["Period", "Opened", "Closed", "Arrests", "Warrants"],
+      [doc.W - 320, 80, 80, 80, 80],
+      p.series.map((b) => [b.label, String(b.opened), String(b.closed), String(b.arrests), String(b.warrants)])
+    );
+    return;
+  }
+
+  if (id === "breakdown") {
+    doc.sectionHeader("Case Status Breakdown");
+    if (!p.breakdown.length) {
+      doc.paragraph("No case-status data received yet.");
+      return;
+    }
+    doc.table(
+      ["Status", "Count", "Share"],
+      [doc.W - 200, 100, 100],
+      p.breakdown
+        .map((b) => [b.state, String(b.count), `${b.pct}%`])
+        .concat([["Total", String(p.totalCases), "100%"]])
+    );
+    return;
+  }
+
+  if (id === "workload") {
+    doc.sectionHeader("Investigator Workload");
+    if (!p.workload.length) {
+      doc.paragraph("No investigators reporting yet.");
+      return;
+    }
+    doc.table(
+      ["Investigator", "Total", "Open", "Ongoing", "Aging", "New", "Band"],
+      [doc.W - 300, 50, 50, 60, 50, 40, 50],
+      p.workload.map((w) => [
+        w.name, String(w.total), String(w.open), String(w.ongoing), String(w.aging), String(w.newMtd), w.band,
+      ])
+    );
+    return;
+  }
+
+  if (id === "cases") {
+    doc.sectionHeader(`Cases (${p.cases.length})`);
+    if (!p.cases.length) {
+      doc.paragraph("No cases match this scope and filter.");
+      return;
+    }
+    doc.table(
+      ["Case", "Detective", "State", "Age", "Last Activity"],
+      [110, 120, 70, 45, doc.W - 345],
+      p.cases.slice(0, 200).map((c) => [
+        c.caseNumber, c.detective, c.state, `${c.ageDays}d`, c.lastActivity,
+      ])
+    );
+    if (p.cases.length > 200) doc.paragraph(`Truncated — ${p.cases.length - 200} further cases not printed.`);
+    return;
+  }
+
+  if (id === "ops") {
+    doc.sectionHeader("OPS Plans — Pending Approval");
+    if (p.opsPending.length) {
+      doc.table(
+        ["OPS ID", "Title", "Detective", "Risk"],
+        [110, doc.W - 340, 130, 100],
+        p.opsPending.map((o) => [o.id, o.title, o.detective, o.risk])
+      );
+    } else {
+      doc.paragraph("No OPS plans awaiting approval.");
+    }
+    doc.sectionHeader("OPS Plans — Signed / Returned");
+    if (p.opsSigned.length) {
+      doc.table(
+        ["OPS ID", "Title", "Status", "By"],
+        [110, doc.W - 340, 90, 140],
+        p.opsSigned.map((o) => [o.id, o.title, o.status, o.signedBy || "—"])
+      );
+    } else {
+      doc.paragraph("No signed or returned OPS plans yet.");
+    }
+  }
+}
+
+/** Render a resolved payload to PDF bytes. */
+export async function renderReportPdf(p: ReportPayload): Promise<Uint8Array> {
+  const who = [p.supervisor.name, p.supervisor.badge && `Badge ${p.supervisor.badge}`, p.supervisor.unit]
+    .filter(Boolean)
+    .join("  ·  ");
+  const sub =
+    `${p.scope.label}  ·  ${p.filterLabel}  ·  Generated ${new Date(p.generatedAt).toLocaleString()}` +
+    (who ? `  ·  ${who}` : "");
+  const doc = new Doc(p.title, sub);
+  await doc.init();
+
+  for (const id of p.sections) renderSection(doc, id, p);
+
+  if (p.caveats.length) {
+    doc.sectionHeader("Notes on these figures");
+    p.caveats.forEach((c) => {
+      // The Doc paragraph helper is single-line; wrap by hand at ~110 chars.
+      const words = c.split(/\s+/);
+      let line = "";
+      words.forEach((w) => {
+        if ((line + " " + w).trim().length > 110) {
+          doc.paragraph(line);
+          line = w;
+        } else {
+          line = (line ? line + " " : "") + w;
+        }
+      });
+      if (line) doc.paragraph(line);
+    });
+  }
+
+  return doc.finalize();
+}
+
+/** Render a payload to a downloadable PDF blob (no download side-effect). */
+export async function exportReportPdf(
+  p: ReportPayload
+): Promise<{ filename: string; blob: Blob }> {
+  const bytes = await renderReportPdf(p);
+  return {
+    filename: reportFilename(p, "pdf"),
+    blob: new Blob([bytes as BlobPart], { type: "application/pdf" }),
+  };
 }

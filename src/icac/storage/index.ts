@@ -22,6 +22,12 @@ export interface IcacStorage {
   readIndex(): Promise<StoredDoc>;
   /** Persist the stored document verbatim (service decides plaintext vs envelope). */
   writeIndex(doc: StoredDoc): Promise<void>;
+  /**
+   * Optionally acquire write permission eagerly, while the caller holds
+   * transient user activation (before any long await). Backends without a
+   * permission model may omit this. Returns true when writing may proceed.
+   */
+  ensureWritable?(): Promise<boolean>;
 }
 
 let cached: IcacStorage | null = null;

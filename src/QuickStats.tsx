@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { METRIC_CATALOG, metricDef, formatMetricValue } from "./data/metrics";
 import { getQuickStats, setQuickStats, QUICK_STATS_COUNT } from "./data/prefs";
+import { periodTag, periodLabel, type PeriodMetrics, type SecondaryPeriod } from "./data/periods";
 import { IconSettings } from "./icons";
 
 // "Configure Quick Stats" modal — pick exactly 4 metrics from the catalog.
@@ -77,7 +78,13 @@ function ConfigureModal({
 }
 
 /** Quick Stats panel — 4 configurable metric tiles with a gear to reconfigure. */
-export default function QuickStats({ values }: { values: Record<string, number> }) {
+export default function QuickStats({
+  periods,
+  secondary,
+}: {
+  periods: PeriodMetrics;
+  secondary: SecondaryPeriod;
+}) {
   const [keys, setKeys] = useState<string[]>(() => getQuickStats());
   const [configuring, setConfiguring] = useState(false);
 
@@ -92,12 +99,22 @@ export default function QuickStats({ values }: { values: Record<string, number> 
       <div className="quick-stats-grid">
         {keys.map((key, i) => {
           const def = metricDef(key);
-          const has = values[key] != null;
+          const monthVal = periods.buckets.month[key];
+          const secVal = periods.buckets[secondary][key];
+
           return (
             <div className="quick-tile" key={i} style={{ ["--accent" as string]: def.accent }}>
               <div className="quick-tile-label">{def.label}</div>
-              <div className="quick-tile-val">{formatMetricValue(key, values[key])}</div>
-              <div className="quick-tile-sub">{has ? def.subtitle : "Awaiting unit data"}</div>
+              <div className="metric-dual tight">
+                <div className="metric-slot" title={periodLabel("month", periods.labels)}>
+                  <div className="quick-tile-val">{formatMetricValue(key, monthVal)}</div>
+                  <div className="metric-period">THIS MONTH</div>
+                </div>
+                <div className="metric-slot alt" title={periodLabel(secondary, periods.labels)}>
+                  <div className="quick-tile-val">{formatMetricValue(key, secVal)}</div>
+                  <div className="metric-period">{periodTag(secondary, periods.labels)}</div>
+                </div>
+              </div>
             </div>
           );
         })}

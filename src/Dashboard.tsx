@@ -28,7 +28,14 @@ import type {
 import OpsPlanModal from "./OpsPlanModal";
 import StatCards from "./StatCards";
 import QuickStats from "./QuickStats";
-import { getCardPrefs, getQuickStats, onPrefsChange } from "./data/prefs";
+import { getCardPrefs, getQuickStats, getSecondaryPeriod, setSecondaryPeriod, onPrefsChange } from "./data/prefs";
+import {
+  emptyPeriodMetrics,
+  periodLabel,
+  SECONDARY_CHOICES,
+  type PeriodMetrics,
+  type SecondaryPeriod,
+} from "./data/periods";
 import { generateReport, type ReportKind } from "./reports/generate";
 import {
   IconChevron,
@@ -88,7 +95,8 @@ export default function Dashboard() {
   const [signed, setSigned] = useState<OpsPlan[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [supervisor, setSupervisor] = useState<SupervisorIdentity | null>(null);
-  const [metricValues, setMetricValues] = useState<Record<string, number>>({});
+  const [periods, setPeriods] = useState<PeriodMetrics>(() => emptyPeriodMetrics());
+  const [secondary, setSecondary] = useState<SecondaryPeriod>(() => getSecondaryPeriod());
   const [cardPrefs, setCardPrefs] = useState<string[]>(() => getCardPrefs());
 
   const [selected, setSelected] = useState<MetricKey | null>(null);
@@ -106,7 +114,7 @@ export default function Dashboard() {
     dataService.getSignedOpsPlans().then(setSigned);
     dataService.getAlerts().then(setAlerts);
     dataService.getSupervisor().then(setSupervisor);
-    dataService.getMetricValues().then(setMetricValues);
+    dataService.getMetricPeriods().then(setPeriods);
     setLastSync(Date.now());
   };
 
@@ -140,7 +148,7 @@ export default function Dashboard() {
         dataService.getStats().then(setStats);
         dataService.getCases().then(setCases);
         dataService.getWorkload().then(setWorkload);
-        dataService.getMetricValues().then(setMetricValues);
+        dataService.getMetricPeriods().then(setPeriods);
         setLastSync(Date.now());
         if (d?.dtype === "stats") {
           setFlash(`Stats snapshot received · ${d.from || "investigator"}`);
@@ -159,8 +167,12 @@ export default function Dashboard() {
     };
   }, []);
 
-  // Reflect card/quick-stats preference changes made from the gear menus.
-  useEffect(() => onPrefsChange(() => setCardPrefs(getCardPrefs())), []);
+  // Reflect card/quick-stats/period preference changes made from the gear menus.
+  useEffect(() =>
+    onPrefsChange(() => {
+      setCardPrefs(getCardPrefs());
+      setSecondary(getSecondaryPeriod());
+    }), []);
 
   useEffect(() => {
     if (!flash) return;
@@ -197,7 +209,8 @@ export default function Dashboard() {
     try {
       const name = await generateReport(kind, {
         supervisor: { name: supervisor.name, badge: supervisor.badge, unit: supervisor.unit },
-        metricValues,
+        metricValues: periods.buckets.allTime,
+        periods,
         cardKeys: cardPrefs,
         quickKeys: getQuickStats(),
         breakdown: stats.breakdown,
@@ -250,19 +263,58 @@ export default function Dashboard() {
 
       {/* ---------- METRIC CARDS ---------- */}
       <div className="section-label">
-        <span>Month to Date&nbsp;&nbsp;·&nbsp;&nbsp;Year to Date</span>
+        <span className="period-bar">
+          <span className="period-fixed" title={`Calendar month to date — ${periods.labels.month}`}>
+            {periods.labels.month}
+          </span>
+          <span className="period-sep">·</span>
+          <span className="period-toggle" role="group" aria-label="Secondary reporting period">
+            {SECONDARY_CHOICES.map((p) => (
+              <button
+                key={p}
+                className={`period-btn${secondary === p ? " active" : ""}`}
+                aria-pressed={secondary === p}
+                onClick={() => {
+                  setSecondaryPeriod(p);
+                  setSecondary(p);
+                }}
+                title={`Show ${periodLabel(p, periods.labels)} beside the month on every card`}
+              >
+                {p === "quarter"
+                  ? periods.labels.quarter
+                  : p === "year"
+                    ? periods.labels.year
+                    : "All time"}
+              </button>
+            ))}
+          </span>
+          {!periods.hasPeriodData && Object.keys(periods.buckets.allTime).length > 0 && (
+            <span className="period-warn" title="Investigators are running a VIPER build that does not send period breakdowns yet. Showing all-time figures.">
+              all-time only
+            </span>
+          )}
+          {periods.hasPeriodData && periods.staleSenders.length > 0 && (
+            <span
+              className="period-warn"
+              title={`Period figures exclude: ${periods.staleSenders.join(", ")} (older VIPER build — all-time only).`}
+            >
+              {periods.staleSenders.length} investigator
+              {periods.staleSenders.length === 1 ? "" : "s"} all-time only
+            </span>
+          )}
+        </span>
         <span className="last-updated">
           <IconRefresh size={14} /> Last Updated:{" "}
           {lastSync ? new Date(lastSync).toLocaleTimeString() : "—"}
         </span>
       </div>
       <div className="metric-row rise" style={{ animationDelay: "60ms" }}>
-        <StatCards prefs={cardPrefs} values={metricValues} />
+        <StatCards prefs={cardPrefs} periods={periods} secondary={secondary} />
       </div>
 
       {/* ---------- QUICK STATS ---------- */}
       <div className="grid row rise" style={{ animationDelay: "90ms" }}>
-        <QuickStats values={metricValues} />
+        <QuickStats periods={periods} secondary={secondary} />
       </div>
 
       {/* ---------- MID SECTION ---------- */}

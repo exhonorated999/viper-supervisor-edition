@@ -10,7 +10,8 @@ lan-node/audit.log.jsonl
 lan-node/node-key.json
 lan-node/trust-store.json
 lan-node/deliveries.json
-scripts/_*.txt 
+scripts/_*.txt
+scripts/_*.html
 dist-electron
 release
 lan-dist 

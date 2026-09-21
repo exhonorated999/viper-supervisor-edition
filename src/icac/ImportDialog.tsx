@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { ingestFiles, type IngestProgress } from "./import/ingest";
 import { addTips, createWarrant, saveWarrantPdf } from "./service";
+import { getIcacStorage } from "./storage";
 import { dataService } from "../data/service";
 
 // Minimal ICAC import dialog: drag-and-drop or pick ZIPs / PDFs, run the
@@ -25,6 +26,18 @@ export default function ImportDialog({ onClose, onDone }: { onClose: () => void;
     setSummary(null);
     setRows([]);
     try {
+      // Acquire folder write permission FIRST, while we still hold the transient
+      // user activation from the click/drop. Requesting it later (after the long
+      // ingestFiles parse) throws "User activation is required to request
+      // permissions" once the ~5s activation window has lapsed.
+      const storage = getIcacStorage();
+      if (storage.ensureWritable) {
+        const ok = await storage.ensureWritable();
+        if (!ok) {
+          setError("Folder permission was denied — set a storage location in Settings → Optional Modules.");
+          return;
+        }
+      }
       const { tips } = await ingestFiles(files, (p) => {
         setRows((prev) => {
           const i = prev.findIndex((r) => r.fileName === p.fileName);

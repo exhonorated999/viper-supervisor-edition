@@ -1,0 +1,32 @@
+[
+  {
+    "id": "rep-1",
+    "content": "[reports-1] scope.ts — preset/custom windows + local activity derivation",
+    "status": "completed"
+  },
+  {
+    "id": "rep-2",
+    "content": "[reports-2] payload.ts — single ReportPayload contract shared by preview/PDF/HTML",
+    "status": "completed"
+  },
+  {
+    "id": "rep-3",
+    "content": "[reports-3] html.ts — self-contained interactive HTML exporter",
+    "status": "completed"
+  },
+  {
+    "id": "rep-4",
+    "content": "[reports-4] history.ts — IndexedDB report archive",
+    "status": "completed"
+  },
+  {
+    "id": "rep-5",
+    "content": "[reports-5] Reports.tsx builder+preview+history, wired into App.tsx",
+    "status": "completed"
+  },
+  {
+    "id": "rep-6",
+    "content": "[reports-6] generate.ts payload PDF renderer, styles, typecheck/build/E2E 22/22",
+    "status": "completed"
+  }
+]

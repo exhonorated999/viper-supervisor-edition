@@ -1,0 +1,32 @@
+[
+  {
+    "content": "[viper-1] Generalize VIPER _inThisMonth into a period-window predicate; convert the 3 hardcoded month checks",
+    "id": "1",
+    "status": "completed"
+  },
+  {
+    "content": "[viper-2] Add window.viperMetricsByPeriod() + metricsOnly flag; push metricsByPeriod in buildStatsSnapshot",
+    "id": "2",
+    "status": "completed"
+  },
+  {
+    "content": "[sup-1] Add src/data/periods.ts (PeriodKey, labels, calendar windows) + prefs secondary-period persistence",
+    "id": "3",
+    "status": "completed"
+  },
+  {
+    "content": "[sup-2] derive.ts aggregateMetricPeriods + service.getMetricPeriods with all-time fallback",
+    "id": "4",
+    "status": "completed"
+  },
+  {
+    "content": "[sup-3] Dual-value StatCards + QuickStats and the Month/Quarter/Year toggle in Dashboard header",
+    "id": "5",
+    "status": "pending"
+  },
+  {
+    "content": "[sup-4] styles.css dual-value styling; wire period into PDF reports; typecheck + verify",
+    "id": "6",
+    "status": "pending"
+  }
+]
