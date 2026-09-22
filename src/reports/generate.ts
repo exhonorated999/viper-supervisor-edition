@@ -48,6 +48,28 @@ const REPORT_META: Record<ReportKind, { title: string; period: string }> = {
   ops: { title: "OPS Plan Log", period: "All" },
 };
 
+// The standard PDF fonts are WinAnsi-encoded; pdf-lib throws on any codepoint
+// outside that set. Case numbers and OPS titles come off the wire from another
+// machine, so anything exotic (emoji, CJK, smart glyphs Word invented) has to
+// be folded down rather than allowed to abort the whole report.
+const WINANSI_EXTRAS = new Set([
+  0x20ac, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021, 0x02c6, 0x2030,
+  0x0160, 0x2039, 0x0152, 0x017d, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022,
+  0x2013, 0x2014, 0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0x017e, 0x0178,
+]);
+
+function sanitize(s: string): string {
+  let out = "";
+  for (const ch of String(s ?? "")) {
+    const c = ch.codePointAt(0)!;
+    if (c === 9 || c === 10 || c === 13) out += " ";
+    else if (c >= 0x20 && c <= 0xff) out += ch;
+    else if (WINANSI_EXTRAS.has(c)) out += ch;
+    else out += "?";
+  }
+  return out;
+}
+
 // Small stateful layout helper over a single logical document.
 class Doc {
   doc!: PDFDocument;
@@ -82,8 +104,13 @@ class Doc {
       this.y -= 24;
       this.text(this.title, this.M, this.y - 6, { font: this.bold, size: 13, color: CYAN });
       this.y -= 16;
-      this.text(this.subtitle, this.M, this.y - 6, { color: DIM, size: 9 });
-      this.y -= 22;
+      // The subtitle carries scope + filters + identity and can run long, so
+      // wrap it instead of letting it run off the right edge of the page.
+      this.wrap(this.subtitle, this.W, 9).forEach((line) => {
+        this.text(line, this.M, this.y - 6, { color: DIM, size: 9 });
+        this.y -= 12;
+      });
+      this.y -= 10;
     } else {
       this.y -= 8;
     }
@@ -97,7 +124,7 @@ class Doc {
     s: string, x: number, yy: number,
     o: { font?: PDFFont; size?: number; color?: ReturnType<typeof rgb> } = {}
   ) {
-    this.page.drawText(s, { x, y: yy, size: o.size ?? 10, font: o.font ?? this.font, color: o.color ?? INK });
+    this.page.drawText(sanitize(s), { x, y: yy, size: o.size ?? 10, font: o.font ?? this.font, color: o.color ?? INK });
   }
 
   sectionHeader(label: string) {
@@ -108,57 +135,139 @@ class Doc {
     this.y -= 30;
   }
 
+  /**
+   * Longest prefix of `s` that fits `maxW` at `size`, ellipsised if truncated.
+   *
+   * Measured with the real font metrics rather than a characters-per-point
+   * guess — a guess is wrong by a factor of two between 6.5pt label text and
+   * 15pt bold figures, which is how labels ended up underneath their values.
+   */
+  fit(s: string, maxW: number, size: number, font: PDFFont = this.font): string {
+    const t = sanitize(s);
+    if (maxW <= 0) return "";
+    if (font.widthOfTextAtSize(t, size) <= maxW) return t;
+    let lo = 0;
+    let hi = t.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (font.widthOfTextAtSize(t.slice(0, mid) + "…", size) <= maxW) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo > 0 ? t.slice(0, lo).trimEnd() + "…" : "";
+  }
+
+  /** Greedy word wrap to `maxW`. Never returns an empty array. */
+  wrap(s: string, maxW: number, size: number, font: PDFFont = this.font): string[] {
+    const words = sanitize(s).split(/\s+/).filter(Boolean);
+    if (!words.length) return [""];
+    const lines: string[] = [];
+    let line = "";
+    for (const w of words) {
+      const next = line ? `${line} ${w}` : w;
+      if (font.widthOfTextAtSize(next, size) <= maxW) {
+        line = next;
+      } else {
+        if (line) lines.push(line);
+        // A single word longer than the column has to be hard-clipped.
+        line = font.widthOfTextAtSize(w, size) <= maxW ? w : this.fit(w, maxW, size, font);
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  /**
+   * Two-up stat boxes: a large figure with its label beneath.
+   *
+   * Geometry is expressed as offsets from the box edges so the figure and the
+   * label can never collide: the value baseline sits 20pt below the top edge
+   * and the label baseline 10pt above the bottom edge of a 42pt box, leaving
+   * a few points of clear air between the value's descender and the label's
+   * cap height.
+   */
   keyValueGrid(rows: { label: string; value: string }[]) {
+    const gutter = 12;
     const colW = this.W / 2;
-    const rowH = 26;
+    const boxW = colW - gutter;
+    const padX = 10;
+    const rowH = 42;
+    const gapY = 8;
+    const innerW = boxW - padX * 2;
+
     rows.forEach((r, i) => {
       const col = i % 2;
-      if (col === 0) this.ensure(rowH);
+      if (col === 0) this.ensure(rowH + gapY);
       const x = this.M + col * colW;
       const yTop = this.y;
-      this.page.drawRectangle({ x, y: yTop - rowH + 4, width: colW - 8, height: rowH - 4, borderColor: LINE, borderWidth: 1, color: rgb(0.98, 0.98, 0.99) });
-      this.text(r.value, x + 10, yTop - 15, { font: this.bold, size: 14, color: INK });
-      this.text(r.label.toUpperCase(), x + 10, yTop - rowH + 9, { size: 6.5, color: DIM });
-      if (col === 1 || i === rows.length - 1) this.y -= rowH + 6;
+      const yBot = yTop - rowH;
+
+      this.page.drawRectangle({
+        x, y: yBot, width: boxW, height: rowH,
+        borderColor: LINE, borderWidth: 1, color: rgb(0.98, 0.98, 0.99),
+      });
+      this.text(this.fit(r.value, innerW, 15, this.bold), x + padX, yTop - 20, {
+        font: this.bold, size: 15, color: INK,
+      });
+      this.text(this.fit(r.label.toUpperCase(), innerW, 7), x + padX, yBot + 10, {
+        size: 7, color: DIM,
+      });
+
+      if (col === 1 || i === rows.length - 1) this.y -= rowH + gapY;
     });
   }
 
   table(headers: string[], widths: number[], rows: string[][]) {
     const rowH = 18;
+    const padX = 4;
     const drawHead = () => {
       this.ensure(rowH * 2);
       let x = this.M;
       this.page.drawRectangle({ x: this.M, y: this.y - rowH + 4, width: this.W, height: rowH, color: BAND });
       headers.forEach((h, i) => {
-        this.text(h, x + 4, this.y - 9, { font: this.bold, size: 8, color: CYAN });
+        this.text(this.fit(h, widths[i] - padX * 2, 8, this.bold), x + padX, this.y - 9, {
+          font: this.bold, size: 8, color: CYAN,
+        });
         x += widths[i];
       });
       this.y -= rowH;
     };
     drawHead();
     rows.forEach((r) => {
+      // Re-draw the header whenever a row spills onto a fresh page. Comparing
+      // the page object is reliable; comparing this.y to an expected float was
+      // not.
+      const pageBefore = this.page;
       this.ensure(rowH);
-      if (this.y === 792 - this.M - 8) drawHead();
+      if (this.page !== pageBefore) drawHead();
       let x = this.M;
       r.forEach((c, i) => {
-        this.text(this.clip(c, widths[i]), x + 4, this.y - 9, { size: 8, color: INK });
+        this.text(this.fit(c, widths[i] - padX * 2, 8), x + padX, this.y - 9, { size: 8, color: INK });
         x += widths[i];
       });
-      this.page.drawLine({ start: { x: this.M, y: this.y - rowH + 3 }, end: { x: this.M + this.W, y: this.y - rowH + 3 }, thickness: 0.5, color: LINE });
+      this.page.drawLine({
+        start: { x: this.M, y: this.y - rowH + 3 },
+        end: { x: this.M + this.W, y: this.y - rowH + 3 },
+        thickness: 0.5, color: LINE,
+      });
       this.y -= rowH;
     });
     this.y -= 6;
   }
 
   clip(s: string, w: number): string {
-    const max = Math.max(4, Math.floor(w / 4.6));
-    return s.length > max ? s.slice(0, max - 1) + "…" : s;
+    return this.fit(s, w - 8, 8);
   }
 
-  paragraph(s: string) {
-    this.ensure(16);
-    this.text(s, this.M, this.y - 10, { size: 9, color: DIM });
-    this.y -= 16;
+  /** A dim note. Wraps to the content width and flows across pages. */
+  paragraph(s: string, o: { size?: number; color?: ReturnType<typeof rgb> } = {}) {
+    const size = o.size ?? 9;
+    const lineH = size + 4;
+    this.wrap(s, this.W, size).forEach((line) => {
+      this.ensure(lineH);
+      this.text(line, this.M, this.y - size, { size, color: o.color ?? DIM });
+      this.y -= lineH;
+    });
+    this.y -= 4;
   }
 
   finalize(): Promise<Uint8Array> {
@@ -174,9 +283,10 @@ class Doc {
 
 /**
  * Metric rows for a report. When the report is period-scoped (Monthly / YTD)
- * and the unit has period data, each row reads "<period value>  (all time N)"
- * so the printed figure matches the dashboard card instead of silently being
- * a lifetime total under a "Month to Date" heading.
+ * and the unit has period data, the BIG figure is the period value and the
+ * lifetime total rides along in the small label beneath it — so the printed
+ * card matches the dashboard card, and a long currency pair like
+ * "$1,284,500 / $9,120,775" never has to be crammed into one 15pt line.
  */
 function metricRows(
   d: ReportData,
@@ -193,15 +303,18 @@ function metricRows(
     const at = d.periods!.buckets.allTime[k] ?? d.metricValues[k] ?? 0;
     if (pv == null) {
       // No period dimension for this metric — report the lifetime figure and
-      // say so, rather than printing a zero.
-      return { label, value: `${formatMetricValue(k, at)} (all time)` };
+      // say so, rather than printing a zero. The suffix has to differ from the
+      // normal one or the reader cannot tell which number the box is showing.
+      return { label: `${label} · all-time only`, value: formatMetricValue(k, at) };
     }
-    return { label, value: `${formatMetricValue(k, pv)}   (all time ${formatMetricValue(k, at)})` };
+    return {
+      label: `${label} · all time ${formatMetricValue(k, at)}`,
+      value: formatMetricValue(k, pv),
+    };
   });
 }
 
-async function build(kind: ReportKind, d: ReportData): Promise<Uint8Array> {
-  const meta = REPORT_META[kind];
+async function build(kind: ReportKind, d: ReportData): Promise<Uint8Array> {  const meta = REPORT_META[kind];
   // Monthly/YTD carry a real period; name the exact window in the header.
   const reportPeriod: PeriodKey =
     kind === "monthly" ? "month" : kind === "ytd" ? "year" : "allTime";
@@ -306,8 +419,10 @@ export async function generateReport(kind: ReportKind, d: ReportData): Promise<s
   return filename;
 }
 
+/** Build a Quick Report to raw PDF bytes (no download). Exposed for tests. */
+export { build as buildQuickReport };
+
 // ---------------------------------------------------------------------------
-// Reports page renderer — driven by a fully-resolved ReportPayload.
 //
 // The Quick Reports path above builds straight from live dashboard state. The
 // Reports page instead resolves everything first (scope, filters, withheld
@@ -323,16 +438,23 @@ function renderSection(doc: Doc, id: SectionId, p: ReportPayload) {
       doc.paragraph("No metrics selected.");
       return;
     }
-    const anyWithheld = p.metrics.some((m) => m.value == null);
     doc.table(
       ["Metric", p.scope.label, "All time"],
       [doc.W - 260, 140, 120],
-      p.metrics.map((m) => [m.label, m.value ?? `— ${m.note ? `(${m.note})` : ""}`.trim(), m.allTime])
+      p.metrics.map((m) => [m.label, m.value ?? "—", m.allTime])
     );
-    if (anyWithheld) {
-      doc.paragraph(
-        "An em dash means the figure has no meaning for this window — it is withheld rather than reported as zero."
-      );
+    // Explain the dashes once, grouped by reason, rather than trying to cram
+    // a sentence into a 140pt column.
+    const withheld = p.metrics.filter((m) => m.value == null);
+    if (withheld.length) {
+      const byNote = new Map<string, string[]>();
+      withheld.forEach((m) => {
+        const note = m.note || "Not available for this window";
+        byNote.set(note, [...(byNote.get(note) || []), m.label]);
+      });
+      byNote.forEach((labels, note) => {
+        doc.paragraph(`— ${note}: ${labels.join(", ")}.`);
+      });
     }
     return;
   }
@@ -450,20 +572,7 @@ export async function renderReportPdf(p: ReportPayload): Promise<Uint8Array> {
 
   if (p.caveats.length) {
     doc.sectionHeader("Notes on these figures");
-    p.caveats.forEach((c) => {
-      // The Doc paragraph helper is single-line; wrap by hand at ~110 chars.
-      const words = c.split(/\s+/);
-      let line = "";
-      words.forEach((w) => {
-        if ((line + " " + w).trim().length > 110) {
-          doc.paragraph(line);
-          line = w;
-        } else {
-          line = (line ? line + " " : "") + w;
-        }
-      });
-      if (line) doc.paragraph(line);
-    });
+    p.caveats.forEach((c) => doc.paragraph(c));
   }
 
   return doc.finalize();

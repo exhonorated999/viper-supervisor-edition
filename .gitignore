@@ -12,6 +12,9 @@ lan-node/trust-store.json
 lan-node/deliveries.json
 scripts/_*.txt
 scripts/_*.html
+scripts/_*.pdf
+scripts/_*.png
+scripts/__pycache__/
 dist-electron
 release
 lan-dist 

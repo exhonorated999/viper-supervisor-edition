@@ -17,7 +17,12 @@ import { resolve } from "node:path";
 import { buildReportPayload, REPORT_KINDS, type ReportKind } from "../src/reports/payload";
 import { defaultScope, resolveScope, toInputDate } from "../src/reports/scope";
 import { renderReportHtml } from "../src/reports/html";
-import { renderReportPdf } from "../src/reports/generate";
+import {
+  renderReportPdf,
+  buildQuickReport,
+  type ReportData as QuickReportData,
+  type ReportKind as QuickKind,
+} from "../src/reports/generate";
 import { currentPeriodLabels, type PeriodMetrics } from "../src/data/periods";
 import type { CaseStatus, InvestigatorWorkload, OpsPlan } from "../src/types";
 
@@ -130,6 +135,32 @@ for (const def of REPORT_KINDS) {
     `${def.title}: html ${Math.round(html.length / 1024)}kB, pdf ${Math.round(pdf.length / 1024)}kB`,
     html.toLowerCase().startsWith("<!doctype html") && html.trimEnd().endsWith("</html>") && pdf.length > 1000
   );
+  // Written out so scripts/pdf-layout-check.py can assert no text overlaps.
+  writeFileSync(resolve(process.cwd(), `scripts/_report-${def.kind}.pdf`), pdf);
+}
+
+// The legacy Quick Reports path (Dashboard tiles) shares the same layout
+// engine, so it gets sampled too — that is where the overlapping labels were
+// first spotted.
+{
+  const quick: QuickReportData = {
+    supervisor: { name: "B. Guith", badge: "654", unit: "Investigations" },
+    metricValues: { arrests: 0, money_seized: 0, cases_closed: 0, new_cases_assigned: 0, closed_w_arrest: 0 },
+    periods,
+    cardKeys: ["arrests", "money_seized", "cases_closed", "new_cases_assigned", "closed_w_arrest"],
+    quickKeys: ["open_cases", "cases_closed", "arrests", "narcotics_seized"],
+    breakdown: common.breakdown,
+    totalCases: 11,
+    workload,
+    cases,
+    opsPending,
+    opsSigned,
+  };
+  for (const k of ["monthly", "ytd", "investigator", "distribution", "ops"] as QuickKind[]) {
+    const bytes = await buildQuickReport(k, quick);
+    ok(`quick report "${k}" renders`, bytes.length > 1000);
+    writeFileSync(resolve(process.cwd(), `scripts/_quick-${k}.pdf`), bytes);
+  }
 }
 
 // --- 2. honesty rules -------------------------------------------------------

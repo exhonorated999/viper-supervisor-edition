@@ -71,11 +71,26 @@ export const METRIC_BY_KEY: Record<string, MetricDef> = Object.fromEntries(
   METRIC_CATALOG.map((m) => [m.key, m])
 );
 
+/**
+ * Turn an unknown wire key into something printable.
+ *
+ * The investigator app and this one version independently, so VIPER can push a
+ * metric key that predates or postdates this catalog. Falling back to the raw
+ * key put "CLOSED_W_ARREST" on a printed command briefing; humanise it instead.
+ */
+function humanizeKey(key: string): string {
+  return String(key || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function metricDef(key: string): MetricDef {
   return (
     METRIC_BY_KEY[key] || {
       key,
-      label: key,
+      label: humanizeKey(key),
       subtitle: "",
       accent: "var(--blue)",
       format: "number",
