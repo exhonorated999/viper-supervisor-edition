@@ -1,7 +1,7 @@
 {
   "name": "viper-supervisor-edition",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "V.I.P.E.R. Supervisor Edition — local-first ICAC command dashboard (desktop)",
   "author": "V.I.P.E.R.",
   "type": "module",
